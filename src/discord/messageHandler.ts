@@ -1,8 +1,10 @@
 import { Message as DiscordMessage, Client, AttachmentBuilder } from 'discord.js';
-import { OpenRouterService, Message, RouteDecision } from '../ai/openRouterService';
+import { OpenRouterService, Message } from '../ai/openRouterService';
 import { ImageService } from '../ai/imageService';
 import { MemoryManager } from '../ai/memoryManager';
 import { PromptManager } from './promptManager';
+import { Planner } from '../ai/planner';
+import { ActionExecutor } from '../ai/actionExecutor';
 import { MCPToolResult } from '../mcp';
 
 export class MessageHandler {
@@ -11,6 +13,8 @@ export class MessageHandler {
   private imageService: ImageService;
   private memoryManager: MemoryManager;
   private promptManager: PromptManager;
+  private planner: Planner;
+  private executor: ActionExecutor;
 
   constructor(
     client: Client,
@@ -23,6 +27,8 @@ export class MessageHandler {
     this.imageService = new ImageService();
     this.memoryManager = memoryManager;
     this.promptManager = promptManager;
+    this.planner = new Planner(aiService);
+    this.executor = new ActionExecutor(aiService);
   }
 
   shouldRespond(message: DiscordMessage): boolean {
@@ -95,7 +101,7 @@ export class MessageHandler {
       // Add to memory
       await this.memoryManager.addMessage(channelId, userMessage);
 
-      // Get message history
+      // Get message history for context
       const conversation = this.memoryManager.getConversationContext(channelId);
       const composedPrompt = this.promptManager.composeChatPrompt(
         channelId,
@@ -103,50 +109,40 @@ export class MessageHandler {
         personaId
       );
 
-      // Decide if we need to use a tool
-      const routeDecision = await this.aiService.decideRoute(message.content);
-      console.log(`Route decision: ${routeDecision.route}${routeDecision.toolName ? ` (tool: ${routeDecision.toolName})` : ''}`);
+      // PLANNER STEP: Decide what actions to take
+      const plan = await this.planner.planActionsWithRetry(
+        message.content,
+        composedPrompt.messages,
+        personaId
+      );
 
-      if (routeDecision.route === 'image') {
-        // Handle image generation
-        await this.handleImageGeneration(message, routeDecision);
-        return; // Image sent directly, no text response needed
+      console.log(`Action plan: ${plan.actions.map(a => a.type).join(' → ')}`);
+
+      // EXECUTOR STEP: Execute actions sequentially
+      const executionResult = await this.executor.executeActions(plan.actions);
+
+      // Handle image response separately if generated
+      if (executionResult.hasImage && executionResult.imageData) {
+        await this.sendImageResponse(message, executionResult, personaId);
+        return;
       }
 
-      let response: string;
-
-      if (routeDecision.route === 'tool' && routeDecision.toolName) {
-        // Execute tool and summarize result
-        console.log(`Executing tool: ${routeDecision.toolName} with params:`, routeDecision.toolParams);
-        response = await this.handleToolExecution(
-          routeDecision,
-          message.content,
-          composedPrompt.messages,
-          composedPrompt.model
-        );
-        console.log(`Tool execution complete, response length: ${response?.length || 0}`);
-      } else {
-        // Regular chat completion
-        response = await this.aiService.chatCompletion(
-          composedPrompt.messages,
-          composedPrompt.model
-        );
-      }
-
-      // Ensure we have a valid response
-      if (!response || response.trim().length === 0) {
-        console.warn('Empty response received, using fallback');
-        response = 'I processed your request, but I don\'t have a response to share.';
-      }
+      // RESPONDER STEP: Generate final response using persona model
+      const finalResponse = await this.generateFinalResponse(
+        message.content,
+        executionResult,
+        composedPrompt.messages,
+        composedPrompt.model
+      );
 
       // Add assistant response to memory
       await this.memoryManager.addMessage(channelId, {
         role: 'assistant',
-        content: response,
+        content: finalResponse,
       });
 
-      // Send response (split if too long)
-      const sentMessage = await this.sendResponse(message, response);
+      // Send response
+      const sentMessage = await this.sendResponse(message, finalResponse);
 
       // Track which persona was used for this response
       if (sentMessage && personaId) {
@@ -155,14 +151,139 @@ export class MessageHandler {
 
       console.log(
         `Responded to ${message.author.username} in ${message.guild?.name || 'DM'}${
-          routeDecision.route === 'tool' ? ` (used tool: ${routeDecision.toolName})` : ''
-        }${personaId ? ` (persona: ${personaId})` : ''}`
+          personaId ? ` (persona: ${personaId})` : ''
+        } with ${plan.actions.length} action(s)`
       );
     } catch (error) {
       console.error('Error handling message:', error);
       await message.reply(
         'Sorry, I encountered an error processing your message. Please try again later.'
       );
+    }
+  }
+
+  /**
+   * Generate final response using persona model with action results as context
+   */
+  private async generateFinalResponse(
+    userQuery: string,
+    executionResult: any,
+    conversationMessages: Message[],
+    model: string
+  ): Promise<string> {
+    try {
+      // Check if there are any tool results to summarize
+      const hasToolResults = executionResult.results.some(
+        (r: any) => r.success && r.content && r.content.length > 0
+      );
+
+      if (!hasToolResults) {
+        // No tool results, just do normal chat
+        return await this.aiService.chatCompletion(conversationMessages, model);
+      }
+
+      // Build context from tool results
+      const toolContext = executionResult.results
+        .filter((r: any) => r.success && r.content)
+        .map((r: any, i: number) => `Result ${i + 1}:\n${r.content}`)
+        .join('\n\n');
+
+      // Create response prompt with tool context
+      const responsePrompt: Message[] = [
+        ...conversationMessages,
+        {
+          role: 'assistant',
+          content: `I executed the requested actions. Here are the results:\n\n${toolContext}`,
+        },
+        {
+          role: 'user',
+          content: `Based on the results above, provide a natural, conversational response to: "${userQuery}"`,
+        },
+      ];
+
+      const response = await this.aiService.chatCompletion(responsePrompt, model);
+
+      // Ensure valid response
+      if (!response || response.trim().length === 0) {
+        console.warn('Empty response from AI, returning tool context directly');
+        return `**Results:**\n${toolContext}`;
+      }
+
+      return response;
+    } catch (error) {
+      console.error('Error generating final response:', error);
+      
+      // Fallback: return tool results directly
+      const toolContext = executionResult.results
+        .filter((r: any) => r.success && r.content)
+        .map((r: any) => r.content)
+        .join('\n\n');
+
+      if (toolContext) {
+        return toolContext;
+      }
+
+      return 'I processed your request but encountered an error generating a response.';
+    }
+  }
+
+  /**
+   * Send image response with optional text context
+   */
+  private async sendImageResponse(
+    message: DiscordMessage,
+    executionResult: any,
+    personaId?: string
+  ): Promise<void> {
+    try {
+      if (!executionResult.imageData) {
+        await message.reply('Image generation was requested but no image was produced.');
+        return;
+      }
+
+      const { buffer, resolution, prompt } = executionResult.imageData;
+
+      // Check Discord size limit
+      if (!this.imageService.isDiscordSafe(buffer.length)) {
+        await message.reply(
+          `⚠️ The generated image is too large for Discord (${Math.round(
+            buffer.length / (1024 * 1024)
+          )}MB). Try requesting a smaller resolution.`
+        );
+        return;
+      }
+
+      // Create attachment
+      const attachment = new AttachmentBuilder(buffer, {
+        name: 'generated-image.png',
+      });
+
+      // Build caption with any text results
+      const textResults = executionResult.results
+        .filter((r: any) => r.success && r.content && !r.imageBuffer)
+        .map((r: any) => r.content)
+        .join('\n\n');
+
+      let caption = `🎨 **Generated Image**\n*${prompt}*\nResolution: ${resolution.width}×${resolution.height}`;
+
+      if (textResults) {
+        caption = `${textResults}\n\n${caption}`;
+      }
+
+      const sentMessage = await message.reply({
+        content: caption,
+        files: [attachment],
+      });
+
+      // Track persona
+      if (personaId) {
+        this.promptManager.trackMessagePersona(sentMessage.id, personaId);
+      }
+
+      console.log(`Generated image: ${resolution.width}×${resolution.height}, ${buffer.length} bytes`);
+    } catch (error) {
+      console.error('Error sending image response:', error);
+      await message.reply('I generated an image but encountered an error sending it.');
     }
   }
 
@@ -244,119 +365,6 @@ export class MessageHandler {
         console.error('Failed to send fallback error message:', fallbackError);
       }
       return null;
-    }
-  }
-
-  /**
-   * Handle tool execution and summarize results back to user
-   */
-  private async handleToolExecution(
-    decision: RouteDecision,
-    userQuery: string,
-    conversationMessages: Message[],
-    model: string
-  ): Promise<string> {
-    try {
-      // Execute the tool
-      const toolResult = await this.aiService.executeMCPTool(
-        decision.toolName!,
-        decision.toolParams || {}
-      );
-
-      // Ensure toolResult is valid
-      if (!toolResult) {
-        return `I tried to use the ${decision.toolName} tool, but it returned no result.`;
-      }
-
-      // Create a summary prompt that includes the tool result
-      const summaryPrompt: Message[] = [
-        ...conversationMessages,
-        {
-          role: 'assistant',
-          content: `I used the ${decision.toolName} tool. Here's the result:\n${JSON.stringify(
-            toolResult,
-            null,
-            2
-          )}`,
-        },
-        {
-          role: 'user',
-          content: `Based on the tool result above, provide a natural, conversational response to the user's query: "${userQuery}"`,
-        },
-      ];
-
-      // Get AI to summarize the result
-      const summary = await this.aiService.chatCompletion(summaryPrompt, model);
-
-      // Ensure summary is valid
-      if (!summary || summary.trim().length === 0) {
-        // Fallback: return raw tool result as formatted JSON
-        return `Tool Result:\n\`\`\`json\n${JSON.stringify(toolResult, null, 2)}\n\`\`\``;
-      }
-
-      return summary;
-    } catch (error) {
-      console.error('Error executing tool:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      return `I tried to use the ${decision.toolName || 'a'} tool, but encountered an error: ${errorMessage}`;
-    }
-  }
-
-  /**
-   * Handle image generation request
-   */
-  private async handleImageGeneration(
-    message: DiscordMessage,
-    decision: RouteDecision
-  ): Promise<void> {
-    try {
-      // Parse resolution from prompt if specified
-      const resolution = this.imageService.parseResolutionFromPrompt(
-        decision.imagePrompt || message.content
-      );
-
-      // Generate image
-      const result = await this.imageService.generateImage({
-        prompt: decision.imagePrompt || message.content,
-        width: decision.imageResolution?.width || resolution.width,
-        height: decision.imageResolution?.height || resolution.height,
-      });
-
-      // Check if image is Discord-safe
-      if (!this.imageService.isDiscordSafe(result.sizeBytes)) {
-        await message.reply(
-          `⚠️ The generated image is too large for Discord (${Math.round(
-            result.sizeBytes / (1024 * 1024)
-          )}MB). Even after compression, it exceeds the 8MB limit. Try requesting a smaller resolution.`
-        );
-        return;
-      }
-
-      // Create attachment
-      const attachment = new AttachmentBuilder(result.imageBuffer, {
-        name: 'generated-image.png',
-      });
-
-      // Send with a short caption
-      const caption = `🎨 **Generated Image**\n*${
-        decision.imagePrompt || message.content
-      }*\nResolution: ${result.resolution.width}×${result.resolution.height}`;
-
-      await message.reply({
-        content: caption,
-        files: [attachment],
-      });
-
-      console.log(
-        `Generated image for ${message.author.username}: ${result.resolution.width}×${result.resolution.height}, ${result.sizeBytes} bytes`
-      );
-    } catch (error) {
-      console.error('Error generating image:', error);
-      await message.reply(
-        `Sorry, I encountered an error generating your image: ${
-          error instanceof Error ? error.message : 'Unknown error'
-        }`
-      );
     }
   }
 }
