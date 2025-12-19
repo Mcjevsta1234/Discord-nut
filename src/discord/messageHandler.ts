@@ -68,6 +68,27 @@ export class MessageHandler {
       // Get channel context
       const channelId = message.channelId;
 
+      // Determine which persona to use
+      let personaId: string | undefined;
+
+      // 1. Check if user explicitly mentioned a persona name
+      const detectedPersona = this.promptManager.detectPersonaFromMessage(
+        message.content
+      );
+      if (detectedPersona) {
+        personaId = detectedPersona;
+      }
+      // 2. If replying to bot, continue with same persona
+      else if (message.reference?.messageId) {
+        const referencedPersona = this.promptManager.getMessagePersona(
+          message.reference.messageId
+        );
+        if (referencedPersona) {
+          personaId = referencedPersona;
+        }
+      }
+      // 3. Use channel default (handled in composeChatPrompt)
+
       // Build user message
       const userMessage: Message = {
         role: 'user',
@@ -81,7 +102,8 @@ export class MessageHandler {
       const conversation = this.memoryManager.getConversationContext(channelId);
       const composedPrompt = this.promptManager.composeChatPrompt(
         channelId,
-        conversation
+        conversation,
+        personaId
       );
 
       // Decide if we need to use a tool
@@ -118,12 +140,17 @@ export class MessageHandler {
       });
 
       // Send response (split if too long)
-      await this.sendResponse(message, response);
+      const sentMessage = await this.sendResponse(message, response);
+
+      // Track which persona was used for this response
+      if (sentMessage && personaId) {
+        this.promptManager.trackMessagePersona(sentMessage.id, personaId);
+      }
 
       console.log(
         `Responded to ${message.author.username} in ${message.guild?.name || 'DM'}${
           routeDecision.route === 'tool' ? ` (used tool: ${routeDecision.toolName})` : ''
-        }`
+        }${personaId ? ` (persona: ${personaId})` : ''}`
       );
     } catch (error) {
       console.error('Error handling message:', error);
@@ -136,13 +163,13 @@ export class MessageHandler {
   private async sendResponse(
     message: DiscordMessage,
     response: string
-  ): Promise<void> {
+  ): Promise<DiscordMessage | null> {
     // Discord message limit is 2000 characters
     const MAX_LENGTH = 2000;
 
     if (response.length <= MAX_LENGTH) {
-      await message.reply(response);
-      return;
+      const sentMessage = await message.reply(response);
+      return sentMessage;
     }
 
     // Split into chunks
@@ -181,12 +208,15 @@ export class MessageHandler {
     }
 
     // Send first chunk as reply, rest as follow-ups
-    await message.reply(chunks[0]);
+    const firstMessage = await message.reply(chunks[0]);
     for (let i = 1; i < chunks.length; i++) {
       if ('send' in message.channel) {
         await message.channel.send(chunks[i]);
       }
     }
+
+    // Return the first message for persona tracking
+    return firstMessage;
   }
 
   /**

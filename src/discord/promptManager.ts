@@ -1,6 +1,12 @@
 import { config } from '../config';
 import { ConversationMemory } from '../ai/memoryManager';
 import { Message } from '../ai/openRouterService';
+import {
+  getPersona,
+  defaultPersonaId,
+  isValidPersonaId,
+  getAllPersonaIds,
+} from '../personas.config';
 
 type OverrideMode = 'replace' | 'append' | 'clear';
 
@@ -14,6 +20,7 @@ export interface ChannelPromptOverrides {
     mode: OverrideMode;
     names: string[];
   };
+  personaId?: string;
 }
 
 export interface ComposedPrompt {
@@ -23,9 +30,11 @@ export interface ComposedPrompt {
 
 export class PromptManager {
   private overrides: Map<string, ChannelPromptOverrides>;
+  private lastUsedPersona: Map<string, string>; // messageId -> personaId
 
   constructor() {
     this.overrides = new Map();
+    this.lastUsedPersona = new Map();
   }
 
   updateSystemPrompt(
@@ -55,6 +64,44 @@ export class PromptManager {
       names: names.map((name) => name.toLowerCase()).filter(Boolean),
     };
     this.overrides.set(channelId, override);
+  }
+
+  setPersona(channelId: string, personaId: string): boolean {
+    if (!isValidPersonaId(personaId)) {
+      return false;
+    }
+    const override = this.getOverrides(channelId);
+    override.personaId = personaId.toLowerCase();
+    this.overrides.set(channelId, override);
+    return true;
+  }
+
+  getChannelPersona(channelId: string): string {
+    const override = this.overrides.get(channelId);
+    return override?.personaId || defaultPersonaId;
+  }
+
+  trackMessagePersona(messageId: string, personaId: string): void {
+    this.lastUsedPersona.set(messageId, personaId);
+  }
+
+  getMessagePersona(messageId: string): string | undefined {
+    return this.lastUsedPersona.get(messageId);
+  }
+
+  detectPersonaFromMessage(content: string): string | null {
+    const contentLower = content.toLowerCase();
+    const personaIds = getAllPersonaIds();
+
+    // Check for persona names with word boundaries
+    for (const personaId of personaIds) {
+      const regex = new RegExp(`\\b${personaId}\\b`, 'i');
+      if (regex.test(contentLower)) {
+        return personaId;
+      }
+    }
+
+    return null;
   }
 
   getTriggerNames(channelId: string): string[] {
@@ -91,9 +138,14 @@ export class PromptManager {
 
   composeChatPrompt(
     channelId: string,
-    conversation: ConversationMemory
+    conversation: ConversationMemory,
+    personaId?: string
   ): ComposedPrompt {
     const messages: Message[] = [];
+
+    // Use provided persona or channel default
+    const activePersonaId = personaId || this.getChannelPersona(channelId);
+    const persona = getPersona(activePersonaId);
 
     const systemPrompt = this.buildSystemPrompt(channelId);
     if (systemPrompt) {
@@ -103,10 +155,16 @@ export class PromptManager {
       });
     }
 
-    if (config.bot.personality) {
+    // Add persona-specific prompts
+    if (persona) {
       messages.push({
         role: 'system',
-        content: `Personality: ${config.bot.personality}`,
+        content: persona.systemPrompt,
+      });
+
+      messages.push({
+        role: 'system',
+        content: persona.personalityPrompt,
       });
     }
 

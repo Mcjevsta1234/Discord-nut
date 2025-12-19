@@ -8,6 +8,7 @@ import {
 } from 'discord.js';
 import { config } from '../config';
 import { PromptManager } from './promptManager';
+import { getAllPersonaIds, getPersona } from '../personas.config';
 
 type PromptAction = 'replace' | 'append' | 'clear';
 
@@ -21,26 +22,31 @@ export class AdminCommandHandler {
   }
 
   async registerCommands(): Promise<void> {
+    const personaIds = getAllPersonaIds();
+    const personaChoices = personaIds.map((id) => {
+      const persona = getPersona(id);
+      return {
+        name: persona?.displayName || id,
+        value: id,
+      };
+    });
+
     const commands: RESTPostAPIApplicationCommandsJSONBody[] = [
       new SlashCommandBuilder()
-        .setName('set-system-prompt')
-        .setDescription('Set or adjust the system prompt for this channel')
-        .addStringOption((option) =>
-          option
-            .setName('action')
-            .setDescription('How to apply the prompt (replace, append, clear)')
-            .setRequired(true)
-            .addChoices(
-              { name: 'replace', value: 'replace' },
-              { name: 'append', value: 'append' },
-              { name: 'clear', value: 'clear' }
-            )
-        )
-        .addStringOption((option) =>
-          option
-            .setName('prompt')
-            .setDescription('Prompt text (required for replace/append)')
-        )
+        .setName('set-persona')
+        .setDescription('Set the bot persona for this channel')
+        .addStringOption((option) => {
+          let opt = option
+            .setName('persona')
+            .setDescription('Choose a persona')
+            .setRequired(true);
+          
+          personaChoices.forEach((choice) => {
+            opt = opt.addChoices(choice);
+          });
+          
+          return opt;
+        })
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .toJSON(),
       new SlashCommandBuilder()
@@ -90,8 +96,8 @@ export class AdminCommandHandler {
       return;
     }
 
-    if (interaction.commandName === 'set-system-prompt') {
-      await this.handleSystemPrompt(interaction);
+    if (interaction.commandName === 'set-persona') {
+      await this.handleSetPersona(interaction);
       return;
     }
 
@@ -112,31 +118,27 @@ export class AdminCommandHandler {
     return false;
   }
 
-  private async handleSystemPrompt(
+  private async handleSetPersona(
     interaction: ChatInputCommandInteraction
   ): Promise<void> {
-    const action = interaction.options.getString('action', true) as PromptAction;
-    const prompt = interaction.options.getString('prompt');
+    const personaId = interaction.options.getString('persona', true);
 
-    if ((action === 'replace' || action === 'append') && !prompt?.trim()) {
+    const success = this.promptManager.setPersona(
+      interaction.channelId,
+      personaId
+    );
+
+    if (!success) {
       await interaction.reply({
-        content: 'Please provide prompt text for replace or append.',
+        content: `Invalid persona. Available personas: ${getAllPersonaIds().join(', ')}`,
         ephemeral: true,
       });
       return;
     }
 
-    this.promptManager.updateSystemPrompt(
-      interaction.channelId,
-      action,
-      prompt || ''
-    );
-
+    const persona = getPersona(personaId);
     await interaction.reply({
-      content:
-        action === 'clear'
-          ? 'System prompt cleared for this channel.'
-          : `System prompt ${action}d for this channel.`,
+      content: `Persona set to **${persona?.displayName || personaId}** for this channel.\n*${persona?.description || ''}*`,
       ephemeral: true,
     });
   }
