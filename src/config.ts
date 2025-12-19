@@ -66,17 +66,17 @@ export const config: Config = {
     apiKey: getEnvVar('OPENROUTER_API_KEY'),
     baseUrl: getEnvVar('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1'),
     models: {
-      router: getEnvVar('OPENROUTER_MODEL_ROUTER', 'openai/gpt-3.5-turbo'),
-      chat: getEnvVar('OPENROUTER_MODEL_CHAT', 'openai/gpt-3.5-turbo'),
-      summarizer: getEnvVar('OPENROUTER_MODEL_SUMMARIZER', 'openai/gpt-3.5-turbo'),
+      router: getEnvVar('OPENROUTER_MODEL_ROUTER', 'mistralai/devstral-2512:free'),
+      chat: getEnvVar('OPENROUTER_MODEL_CHAT', 'mistralai/devstral-2512:free'),
+      summarizer: getEnvVar('OPENROUTER_MODEL_SUMMARIZER', 'mistralai/devstral-2512:free'),
     },
     allowedChatModels: getEnvVarList(
       'OPENROUTER_ALLOWED_CHAT_MODELS',
-      'openai/gpt-3.5-turbo,openai/gpt-4o-mini,anthropic/claude-3.5-sonnet'
+      'mistralai/devstral-2512:free,openai/gpt-4o-mini,anthropic/claude-3.5-sonnet'
     ),
   },
   image: {
-    model: getEnvVar('IMAGE_MODEL', 'google/gemini-2.0-flash-exp:free'),
+    model: getEnvVar('IMAGE_MODEL', 'google/gemini-2.5-flash-image'),
     defaultResolution: {
       width: parseInt(getEnvVar('IMAGE_DEFAULT_WIDTH', '512'), 10),
       height: parseInt(getEnvVar('IMAGE_DEFAULT_HEIGHT', '512'), 10),

@@ -80,7 +80,7 @@ export class ImageService {
   }
 
   /**
-   * Generate an image using OpenRouter
+   * Generate an image using OpenRouter (Gemini image generation)
    */
   async generateImage(request: ImageGenerationRequest): Promise<ImageGenerationResult> {
     try {
@@ -89,40 +89,64 @@ export class ImageService {
         height: request.height || 512,
       };
 
-      console.log(`Generating image: ${request.prompt} at ${resolution.width}x${resolution.height}`);
+      console.log(`Generating image: "${request.prompt}" at ${resolution.width}x${resolution.height}`);
 
-      // For now, we'll use a placeholder approach since direct image generation
-      // through OpenRouter may require specific model configurations
-      // In production, you'd integrate with a proper image generation API
-
-      // Create a simple placeholder image using sharp
-      const placeholderBuffer = await sharp({
-        create: {
-          width: resolution.width,
-          height: resolution.height,
-          channels: 4,
-          background: { r: 100, g: 150, b: 200, alpha: 1 },
-        },
-      })
-        .png()
-        .composite([
+      // Call OpenRouter API with image generation model
+      const enhancedPrompt = `Generate an image: ${request.prompt}`;
+      
+      const response = await this.client.post('/chat/completions', {
+        model: config.image.model,
+        messages: [
           {
-            input: Buffer.from(
-              `<svg width="${resolution.width}" height="${resolution.height}">
-                <rect width="100%" height="100%" fill="rgb(100,150,200)"/>
-                <text x="50%" y="50%" font-family="Arial" font-size="24" fill="white" text-anchor="middle">
-                  Image Generation
-                </text>
-              </svg>`
-            ),
-            top: 0,
-            left: 0,
+            role: 'user',
+            content: enhancedPrompt,
           },
-        ])
-        .toBuffer();
+        ],
+        max_tokens: 1024,
+        temperature: 0.7,
+      });
+
+      console.log('OpenRouter response received');
+
+      const choice = response.data?.choices?.[0];
+      if (!choice) {
+        throw new Error('No choices in OpenRouter response');
+      }
+
+      const message = choice.message;
+      let imageBuffer: Buffer | null = null;
+
+      if (typeof message.content === 'string') {
+        const content = message.content;
+        
+        // Try to extract base64 data URL
+        const dataUrlMatch = content.match(/data:image\/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+\/=]+)/i);
+        if (dataUrlMatch) {
+          console.log('Found base64 data URL in response');
+          imageBuffer = Buffer.from(dataUrlMatch[2], 'base64');
+        } 
+        // Try pure base64 (no data URL prefix)
+        else if (/^[A-Za-z0-9+\/=]{100,}$/.test(content.trim())) {
+          console.log('Found pure base64 in response');
+          imageBuffer = Buffer.from(content.trim(), 'base64');
+        } 
+        else {
+          console.error('No image data found. Response:', content.substring(0, 200));
+          throw new Error(`Image model returned text instead of image. Response: "${content.substring(0, 100)}..."`);
+        }
+      } else {
+        throw new Error('Unexpected response format from image model');
+      }
+
+      if (!imageBuffer) {
+        throw new Error('Failed to extract image data from response');
+      }
+
+      // Resize to requested resolution
+      const resizedBuffer = await this.resizeImage(imageBuffer, resolution.width, resolution.height);
 
       // Ensure Discord-safe size
-      const finalBuffer = await this.ensureDiscordSafe(placeholderBuffer, resolution);
+      const finalBuffer = await this.ensureDiscordSafe(resizedBuffer, resolution);
 
       return {
         imageBuffer: finalBuffer,
