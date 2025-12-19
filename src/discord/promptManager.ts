@@ -16,10 +16,6 @@ export interface ChannelPromptOverrides {
     content?: string;
   };
   chatModel?: string;
-  triggerNames?: {
-    mode: OverrideMode;
-    names: string[];
-  };
   personaId?: string;
 }
 
@@ -50,19 +46,6 @@ export class PromptManager {
   updateChatModel(channelId: string, model: string): void {
     const override = this.getOverrides(channelId);
     override.chatModel = model;
-    this.overrides.set(channelId, override);
-  }
-
-  updateTriggerNames(
-    channelId: string,
-    mode: OverrideMode,
-    names: string[]
-  ): void {
-    const override = this.getOverrides(channelId);
-    override.triggerNames = {
-      mode,
-      names: names.map((name) => name.toLowerCase()).filter(Boolean),
-    };
     this.overrides.set(channelId, override);
   }
 
@@ -104,28 +87,16 @@ export class PromptManager {
     return null;
   }
 
-  getTriggerNames(channelId: string): string[] {
-    const override = this.overrides.get(channelId);
-    const baseTriggers = config.bot.triggerNames;
-
-    if (override?.triggerNames?.mode === 'clear') {
-      return [];
+  getChatModel(channelId: string, personaId?: string): string {
+    // Use persona-specific model if persona is provided
+    if (personaId) {
+      const persona = getPersona(personaId);
+      if (persona?.model) {
+        return persona.model;
+      }
     }
 
-    if (override?.triggerNames?.mode === 'replace') {
-      return override.triggerNames.names;
-    }
-
-    if (override?.triggerNames?.mode === 'append') {
-      return Array.from(
-        new Set([...baseTriggers, ...override.triggerNames.names])
-      );
-    }
-
-    return baseTriggers;
-  }
-
-  getChatModel(channelId: string): string {
+    // Fall back to channel override model
     const overrideModel = this.overrides.get(channelId)?.chatModel;
     if (
       overrideModel &&
@@ -133,6 +104,8 @@ export class PromptManager {
     ) {
       return overrideModel;
     }
+
+    // Fall back to default chat model
     return config.openRouter.models.chat;
   }
 
@@ -183,7 +156,7 @@ export class PromptManager {
 
     return {
       messages,
-      model: this.getChatModel(channelId),
+      model: this.getChatModel(channelId, activePersonaId),
     };
   }
 

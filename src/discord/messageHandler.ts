@@ -33,8 +33,7 @@ export class MessageHandler {
     if (message.system) return false;
 
     const botId = this.client.user?.id;
-    const botName = this.client.user?.username?.toLowerCase();
-    const channelTriggers = this.promptManager.getTriggerNames(message.channelId);
+    const contentLower = message.content.toLowerCase();
 
     // Check if bot is mentioned
     const isMentioned = message.mentions.has(botId || '');
@@ -44,14 +43,12 @@ export class MessageHandler {
       message.reference?.messageId !== undefined &&
       message.type === 19; // REPLY type
 
-    // Check if bot name appears in message
-    const contentLower = message.content.toLowerCase();
-    const containsBotName = Boolean(botName && contentLower.includes(botName));
-    const containsTrigger = channelTriggers.some((trigger) =>
-      contentLower.includes(trigger)
-    );
+    // Check if any persona name appears in message
+    const containsPersonaName = this.promptManager.detectPersonaFromMessage(
+      message.content
+    ) !== null;
 
-    return isMentioned || isRepliedTo || containsBotName || containsTrigger;
+    return isMentioned || isRepliedTo || containsPersonaName;
   }
 
   async handleMessage(message: DiscordMessage): Promise<void> {

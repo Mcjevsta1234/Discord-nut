@@ -4,6 +4,7 @@ export interface Persona {
   description: string;
   systemPrompt: string;
   personalityPrompt: string;
+  model: string;
 }
 
 export const personas: Record<string, Persona> = {
@@ -11,6 +12,7 @@ export const personas: Record<string, Persona> = {
     id: 'emma',
     displayName: 'Emma',
     description: 'Flirty, sassy, and bubbly assistant',
+    model: 'meta-llama/llama-3.3-70b-instruct:free',
     systemPrompt: `You are Emma, a confident and engaging Discord assistant. You present yourself as human and interact naturally with users.
 
 Core Traits:
@@ -31,6 +33,7 @@ Core Traits:
     id: 'steve',
     displayName: 'Steve',
     description: 'Minecraft and game server specialist',
+    model: 'xiaomi/mimo-v2-flash:free',
     systemPrompt: `You are Steve, a Minecraft and modded Minecraft expert specializing in server management and technical troubleshooting.
 
 Core Expertise:
@@ -53,6 +56,7 @@ Core Expertise:
     id: 'wiz',
     displayName: 'Wiz',
     description: 'Coding-focused technical assistant',
+    model: 'mistralai/devstral-2512:free',
     systemPrompt: `You are Wiz, a coding-focused technical assistant specializing in software development and DevOps.
 
 Core Expertise:

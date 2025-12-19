@@ -60,27 +60,6 @@ export class AdminCommandHandler {
         )
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .toJSON(),
-      new SlashCommandBuilder()
-        .setName('set-trigger-names')
-        .setDescription('Set trigger names for this channel')
-        .addStringOption((option) =>
-          option
-            .setName('action')
-            .setDescription('How to apply the trigger names (replace, append, clear)')
-            .setRequired(true)
-            .addChoices(
-              { name: 'replace', value: 'replace' },
-              { name: 'append', value: 'append' },
-              { name: 'clear', value: 'clear' }
-            )
-        )
-        .addStringOption((option) =>
-          option
-            .setName('names')
-            .setDescription('Comma-separated trigger names (required for replace/append)')
-        )
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-        .toJSON(),
     ];
 
     await this.client.application?.commands.set(commands);
@@ -104,10 +83,6 @@ export class AdminCommandHandler {
     if (interaction.commandName === 'set-chat-model') {
       await this.handleChatModel(interaction);
       return;
-    }
-
-    if (interaction.commandName === 'set-trigger-names') {
-      await this.handleTriggerNames(interaction);
     }
   }
 
@@ -162,45 +137,6 @@ export class AdminCommandHandler {
 
     await interaction.reply({
       content: `Chat model set to \`${model}\` for this channel.`,
-      ephemeral: true,
-    });
-  }
-
-  private async handleTriggerNames(
-    interaction: ChatInputCommandInteraction
-  ): Promise<void> {
-    const action = interaction.options.getString('action', true) as PromptAction;
-    const namesInput = interaction.options.getString('names') || '';
-    const parsedNames = namesInput
-      .split(',')
-      .map((name) => name.trim())
-      .filter(Boolean);
-
-    if (
-      (action === 'replace' || action === 'append') &&
-      parsedNames.length === 0
-    ) {
-      await interaction.reply({
-        content: 'Please provide at least one trigger name for replace or append.',
-        ephemeral: true,
-      });
-      return;
-    }
-
-    this.promptManager.updateTriggerNames(
-      interaction.channelId,
-      action,
-      parsedNames
-    );
-
-    const formattedNames =
-      parsedNames.length > 0 ? parsedNames.map((n) => `\`${n}\``).join(', ') : '';
-
-    await interaction.reply({
-      content:
-        action === 'clear'
-          ? 'Trigger names cleared for this channel.'
-          : `Trigger names ${action}d for this channel: ${formattedNames}`,
       ephemeral: true,
     });
   }
