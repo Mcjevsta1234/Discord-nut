@@ -134,6 +134,15 @@ export class OpenRouterService {
 Available tools:
 ${toolList}
 
+IMPORTANT Tool Detection Rules:
+- Math expressions (e.g., "14*3+9", "what's 5+5") → use "calculate" tool
+- Unit conversions (e.g., "6ft to cm", "convert 50kg to pounds") → use "convert_units" tool
+- Currency conversions (e.g., "£25 in USD", "$100 to EUR") → use "convert_currency" tool
+- GitHub queries (e.g., "summarize owner/repo", "what does this repo do", "list files") → use "github_repo" tool
+- Time queries → use "get_time" tool
+- Web searches → use "web_search" tool
+- Minecraft server status → use "minecraft_status" tool
+
 Respond with ONLY a JSON object in this format:
 
 For regular chat:
@@ -159,11 +168,11 @@ For image generation (ONLY when user explicitly or clearly requests visual/image
 }
 
 Routing rules:
+- ALWAYS prefer tools over chat for deterministic tasks (math, conversions, repo info)
 - Use "image" route ONLY when user explicitly asks for image generation, pictures, drawings, or visual content
 - If unclear whether they want an image, use "chat" and ask for clarification
-- Use "tool" when explicitly needed (e.g., current time, web search, calculations)
-- Default to "chat" for general conversation
-- For imagePrompt: Use the user's EXACT words/prompt without modification. Do NOT add details, improvements, or elaborations unless the user specifically requests you to "enhance", "improve", or "add details to" their prompt`,
+- Default to "chat" only for general conversation that doesn't fit any tool
+- For imagePrompt: Use the user's EXACT words/prompt without modification`,
         },
         {
           role: 'user',

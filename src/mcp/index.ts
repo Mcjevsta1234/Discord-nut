@@ -10,6 +10,7 @@ import { MinecraftStatusTool } from './tools/minecraftStatus';
 import { GitHubInfoTool } from './tools/githubInfo';
 import { CalculatorTool } from './tools/calculator';
 import { UnitConverterTool } from './tools/unitConverter';
+import { CurrencyConverterTool } from './tools/currencyConverter';
 import { InfoUtilsTool } from './tools/infoUtils';
 
 /**
@@ -25,6 +26,7 @@ export function registerDefaultTools(mcpClient: MCPClient): void {
   registry.register(new GitHubInfoTool());
   registry.register(new CalculatorTool());
   registry.register(new UnitConverterTool());
+  registry.register(new CurrencyConverterTool());
   registry.register(new InfoUtilsTool());
 
   console.log(`Registered ${registry.count()} MCP tools`);
@@ -42,4 +44,5 @@ export { MinecraftStatusTool } from './tools/minecraftStatus';
 export { GitHubInfoTool } from './tools/githubInfo';
 export { CalculatorTool } from './tools/calculator';
 export { UnitConverterTool } from './tools/unitConverter';
+export { CurrencyConverterTool } from './tools/currencyConverter';
 export { InfoUtilsTool } from './tools/infoUtils';
