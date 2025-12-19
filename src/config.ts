@@ -76,7 +76,7 @@ export const config: Config = {
     ),
   },
   image: {
-    model: getEnvVar('IMAGE_MODEL', 'google/gemini-2.5-flash-image'),
+    model: getEnvVar('IMAGE_MODEL', 'black-forest-labs/flux.2-flex'),
     defaultResolution: {
       width: parseInt(getEnvVar('IMAGE_DEFAULT_WIDTH', '512'), 10),
       height: parseInt(getEnvVar('IMAGE_DEFAULT_HEIGHT', '512'), 10),
