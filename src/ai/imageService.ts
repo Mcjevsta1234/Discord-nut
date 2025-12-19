@@ -80,7 +80,7 @@ export class ImageService {
   }
 
   /**
-   * Generate an image using OpenRouter (Gemini image generation)
+   * Generate an image using OpenRouter with chat.completions
    */
   async generateImage(request: ImageGenerationRequest): Promise<ImageGenerationResult> {
     try {
@@ -91,9 +91,8 @@ export class ImageService {
 
       console.log(`Generating image: "${request.prompt}" at ${resolution.width}x${resolution.height}`);
 
-      // For OpenRouter image generation, we need to explicitly request image output
-      // Use a prompt that clearly indicates we want an image, with size specification
-      const imagePrompt = `${request.prompt} [Image size: ${resolution.width}x${resolution.height}]`;
+      // Request image generation through OpenRouter chat.completions
+      const imagePrompt = `${request.prompt}`;
       
       const response = await this.client.post('/chat/completions', {
         model: config.image.model,
@@ -103,15 +102,14 @@ export class ImageService {
             content: imagePrompt,
           },
         ],
-        // Request image output format explicitly
-        response_format: { type: 'image' },
-        // Image generation parameters
+        // Request image output modality
+        modalities: ['image', 'text'],
         temperature: 0.7,
         max_tokens: 2048,
       });
 
       console.log('OpenRouter response received');
-      console.log('Response structure:', JSON.stringify(response.data, null, 2).substring(0, 500));
+      console.log('Response structure:', JSON.stringify(response.data, null, 2).substring(0, 1000));
 
       const choice = response.data?.choices?.[0];
       if (!choice) {
@@ -120,18 +118,40 @@ export class ImageService {
 
       let imageBuffer: Buffer | null = null;
 
-      // Check multiple possible locations for image data in the response
-      // 1. Check if there's an image field directly in the choice
-      if (choice.image) {
+      // Check for message.images array (OpenRouter format for Flux and similar models)
+      if (choice.message?.images && Array.isArray(choice.message.images) && choice.message.images.length > 0) {
+        console.log(`Found ${choice.message.images.length} images in message.images array`);
+        const firstImage = choice.message.images[0];
+        
+        // Check for image_url.url (URL format)
+        if (firstImage.image_url?.url) {
+          const imageUrl = firstImage.image_url.url;
+          console.log('Image URL found, downloading:', imageUrl);
+          
+          // Download the image
+          const imageResponse = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+          imageBuffer = Buffer.from(imageResponse.data);
+          console.log(`Downloaded image: ${imageBuffer.length} bytes`);
+        }
+        // Check for base64 data
+        else if (firstImage.b64_json) {
+          console.log('Found b64_json in image');
+          imageBuffer = Buffer.from(firstImage.b64_json, 'base64');
+        }
+        else if (firstImage.image_base64) {
+          console.log('Found image_base64 in image');
+          imageBuffer = Buffer.from(firstImage.image_base64, 'base64');
+        }
+      }
+      // Fallback: Check other possible locations
+      else if (choice.image) {
         console.log('Found image field in choice');
         imageBuffer = Buffer.from(choice.image, 'base64');
       }
-      // 2. Check message.image field
       else if (choice.message?.image) {
         console.log('Found image field in message');
         imageBuffer = Buffer.from(choice.message.image, 'base64');
       }
-      // 3. Check for content array with image type
       else if (Array.isArray(choice.message?.content)) {
         console.log('Message content is array, checking for image parts');
         const imagePart = choice.message.content.find((part: any) => 
@@ -141,14 +161,12 @@ export class ImageService {
           if (imagePart.image) {
             imageBuffer = Buffer.from(imagePart.image, 'base64');
           } else if (imagePart.image_url?.url) {
-            const base64Match = imagePart.image_url.url.match(/base64,(.+)/);
-            if (base64Match) {
-              imageBuffer = Buffer.from(base64Match[1], 'base64');
-            }
+            // Download from URL
+            const imageResponse = await axios.get(imagePart.image_url.url, { responseType: 'arraybuffer' });
+            imageBuffer = Buffer.from(imageResponse.data);
           }
         }
       }
-      // 4. Try to extract from message.content string
       else if (typeof choice.message?.content === 'string') {
         const content = choice.message.content;
         
@@ -158,7 +176,7 @@ export class ImageService {
           console.log('Found base64 data URL in message content');
           imageBuffer = Buffer.from(dataUrlMatch[2], 'base64');
         } 
-        // Try pure base64 (no data URL prefix) - must be very long to avoid false positives
+        // Try pure base64 - must be very long to avoid false positives
         else if (/^[A-Za-z0-9+\/=]{500,}$/.test(content.trim())) {
           console.log('Found pure base64 string in message content');
           imageBuffer = Buffer.from(content.trim(), 'base64');
@@ -167,13 +185,12 @@ export class ImageService {
           console.error('No image data found. Model returned text. Response:', content.substring(0, 300));
           throw new Error(
             `Image model returned text instead of image data.\n` +
-            `This model may not support image generation, or the request format is incorrect.\n` +
             `Response: "${content.substring(0, 150)}..."\n` +
-            `Try using a different image generation model.`
+            `Check if the model supports image generation.`
           );
         }
       } else {
-        throw new Error('Unexpected response format - no message content or image data found');
+        throw new Error('Unexpected response format - no message.images, content, or image data found');
       }
 
       if (!imageBuffer) {
