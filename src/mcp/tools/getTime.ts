@@ -8,19 +8,19 @@ import { MCPTool, MCPToolDefinition, MCPToolResult } from '../types';
 export class GetTimeTool implements MCPTool {
   definition: MCPToolDefinition = {
     name: 'get_time',
-    description: 'Get the current date and time in ISO 8601 format or a custom format',
+    description: 'Get the current date and time. Returns Discord-formatted timestamp by default for user-facing messages.',
     parameters: [
       {
         name: 'format',
         type: 'string',
-        description: 'Optional format: "iso", "locale", or "unix". Default is "iso"',
+        description: 'Optional format: "discord" (default, returns <t:UNIX:R>), "iso", "locale", or "unix"',
         required: false,
-        default: 'iso',
+        default: 'discord',
       },
       {
         name: 'timezone',
         type: 'string',
-        description: 'Optional timezone (e.g., "America/New_York", "UTC"). Default is local timezone',
+        description: 'Optional timezone (e.g., "America/New_York", "UTC"). Only applies to "locale" format',
         required: false,
       },
     ],
@@ -28,14 +28,20 @@ export class GetTimeTool implements MCPTool {
 
   async execute(params: Record<string, any>): Promise<MCPToolResult> {
     try {
-      const format = params.format || 'iso';
+      const format = params.format || 'discord';
       const timezone = params.timezone;
       const now = new Date();
+      const unixTimestamp = Math.floor(now.getTime() / 1000);
 
       let timeString: string;
       let additionalInfo: any = {};
 
       switch (format) {
+        case 'discord':
+          // Return Discord relative timestamp format for chat-friendly display
+          timeString = `<t:${unixTimestamp}:R>`;
+          additionalInfo.note = 'Discord relative timestamp (auto-updates in chat)';
+          break;
         case 'iso':
           timeString = now.toISOString();
           break;
@@ -48,13 +54,13 @@ export class GetTimeTool implements MCPTool {
           }
           break;
         case 'unix':
-          timeString = Math.floor(now.getTime() / 1000).toString();
+          timeString = unixTimestamp.toString();
           additionalInfo.unit = 'seconds';
           break;
         default:
           return {
             success: false,
-            error: `Invalid format: ${format}. Use "iso", "locale", or "unix"`,
+            error: `Invalid format: ${format}. Use "discord", "iso", "locale", or "unix"`,
           };
       }
 
