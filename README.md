@@ -372,7 +372,7 @@ IMAGE_MAX_HEIGHT=1024
 The list of allowed chat models is configured in your `.env` file:
 
 ```bash
-OPENROUTER_ALLOWED_CHAT_MODELS=openai/gpt-3.5-turbo,openai/gpt-4o-mini,anthropic/claude-3.5-sonnet
+OPENROUTER_ALLOWED_CHAT_MODELS=mistralai/devstral-2512:free,openai/gpt-4o-mini,anthropic/claude-3.5-sonnet
 ```
 
 To add or remove models:
@@ -384,12 +384,12 @@ You can find available models at [OpenRouter Models](https://openrouter.ai/model
 
 To change the default models for routing, chat, and summarization:
 ```bash
-OPENROUTER_MODEL_ROUTER=openai/gpt-3.5-turbo
-OPENROUTER_MODEL_CHAT=openai/gpt-3.5-turbo
-OPENROUTER_MODEL_SUMMARIZER=openai/gpt-3.5-turbo
+OPENROUTER_MODEL_ROUTER=mistralai/devstral-2512:free
+OPENROUTER_MODEL_CHAT=mistralai/devstral-2512:free
+OPENROUTER_MODEL_SUMMARIZER=mistralai/devstral-2512:free
 ```5-turbo |
-| `OPENROUTER_MODEL_CHAT` | Model for chat responses | openai/gpt-3.5-turbo |
-| `OPENROUTER_MODEL_SUMMARIZER` | Model for summarization | openai/gpt-3.5-turbo |
+| `OPENROUTER_MODEL_CHAT` | Model for chat responses | mistralai/devstral-2512:free |
+| `OPENROUTER_MODEL_SUMMARIZER` | Model for summarization | mistralai/devstral-2512:free |
 
 ## Memory Management
 

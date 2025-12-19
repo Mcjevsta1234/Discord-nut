@@ -91,56 +91,101 @@ export class ImageService {
 
       console.log(`Generating image: "${request.prompt}" at ${resolution.width}x${resolution.height}`);
 
-      // Call OpenRouter API with image generation model
-      const enhancedPrompt = `Generate an image: ${request.prompt}`;
+      // For OpenRouter image generation, we need to explicitly request image output
+      // Use a prompt that clearly indicates we want an image, with size specification
+      const imagePrompt = `${request.prompt} [Image size: ${resolution.width}x${resolution.height}]`;
       
       const response = await this.client.post('/chat/completions', {
         model: config.image.model,
         messages: [
           {
             role: 'user',
-            content: enhancedPrompt,
+            content: imagePrompt,
           },
         ],
-        max_tokens: 1024,
+        // Request image output format explicitly
+        response_format: { type: 'image' },
+        // Image generation parameters
         temperature: 0.7,
+        max_tokens: 2048,
       });
 
       console.log('OpenRouter response received');
+      console.log('Response structure:', JSON.stringify(response.data, null, 2).substring(0, 500));
 
       const choice = response.data?.choices?.[0];
       if (!choice) {
         throw new Error('No choices in OpenRouter response');
       }
 
-      const message = choice.message;
       let imageBuffer: Buffer | null = null;
 
-      if (typeof message.content === 'string') {
-        const content = message.content;
+      // Check multiple possible locations for image data in the response
+      // 1. Check if there's an image field directly in the choice
+      if (choice.image) {
+        console.log('Found image field in choice');
+        imageBuffer = Buffer.from(choice.image, 'base64');
+      }
+      // 2. Check message.image field
+      else if (choice.message?.image) {
+        console.log('Found image field in message');
+        imageBuffer = Buffer.from(choice.message.image, 'base64');
+      }
+      // 3. Check for content array with image type
+      else if (Array.isArray(choice.message?.content)) {
+        console.log('Message content is array, checking for image parts');
+        const imagePart = choice.message.content.find((part: any) => 
+          part.type === 'image' || part.type === 'image_url'
+        );
+        if (imagePart) {
+          if (imagePart.image) {
+            imageBuffer = Buffer.from(imagePart.image, 'base64');
+          } else if (imagePart.image_url?.url) {
+            const base64Match = imagePart.image_url.url.match(/base64,(.+)/);
+            if (base64Match) {
+              imageBuffer = Buffer.from(base64Match[1], 'base64');
+            }
+          }
+        }
+      }
+      // 4. Try to extract from message.content string
+      else if (typeof choice.message?.content === 'string') {
+        const content = choice.message.content;
         
         // Try to extract base64 data URL
         const dataUrlMatch = content.match(/data:image\/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+\/=]+)/i);
         if (dataUrlMatch) {
-          console.log('Found base64 data URL in response');
+          console.log('Found base64 data URL in message content');
           imageBuffer = Buffer.from(dataUrlMatch[2], 'base64');
         } 
-        // Try pure base64 (no data URL prefix)
-        else if (/^[A-Za-z0-9+\/=]{100,}$/.test(content.trim())) {
-          console.log('Found pure base64 in response');
+        // Try pure base64 (no data URL prefix) - must be very long to avoid false positives
+        else if (/^[A-Za-z0-9+\/=]{500,}$/.test(content.trim())) {
+          console.log('Found pure base64 string in message content');
           imageBuffer = Buffer.from(content.trim(), 'base64');
         } 
         else {
-          console.error('No image data found. Response:', content.substring(0, 200));
-          throw new Error(`Image model returned text instead of image. Response: "${content.substring(0, 100)}..."`);
+          console.error('No image data found. Model returned text. Response:', content.substring(0, 300));
+          throw new Error(
+            `Image model returned text instead of image data.\n` +
+            `This model may not support image generation, or the request format is incorrect.\n` +
+            `Response: "${content.substring(0, 150)}..."\n` +
+            `Try using a different image generation model.`
+          );
         }
       } else {
-        throw new Error('Unexpected response format from image model');
+        throw new Error('Unexpected response format - no message content or image data found');
       }
 
       if (!imageBuffer) {
-        throw new Error('Failed to extract image data from response');
+        throw new Error('Failed to extract image data from response. The model may have returned text only.');
       }
+
+      // Validate the image buffer
+      if (imageBuffer.length < 100) {
+        throw new Error(`Image data too small (${imageBuffer.length} bytes). Likely not a valid image.`);
+      }
+
+      console.log(`Successfully extracted image data: ${imageBuffer.length} bytes`);
 
       // Resize to requested resolution
       const resizedBuffer = await this.resizeImage(imageBuffer, resolution.width, resolution.height);
