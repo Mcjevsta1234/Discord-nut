@@ -5,6 +5,7 @@ import { OpenRouterService } from '../ai/openRouterService';
 import { MemoryManager } from '../ai/memoryManager';
 import { PromptManager } from './promptManager';
 import { AdminCommandHandler } from './adminCommands';
+import { MCPClient, registerDefaultTools } from '../mcp';
 
 export class DiscordBot {
   private client: Client;
@@ -25,8 +26,12 @@ export class DiscordBot {
       ],
     });
 
-    // Initialize AI services
-    this.aiService = new OpenRouterService();
+    // Initialize MCP client and register default tools
+    const mcpClient = new MCPClient();
+    registerDefaultTools(mcpClient);
+
+    // Initialize AI services with MCP support
+    this.aiService = new OpenRouterService(mcpClient);
     this.memoryManager = new MemoryManager(this.aiService);
     this.promptManager = new PromptManager();
 

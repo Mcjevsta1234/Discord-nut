@@ -1,9 +1,17 @@
 import axios, { AxiosInstance } from 'axios';
 import { config } from '../config';
+import { MCPClient, MCPToolResult } from '../mcp';
 
 export interface Message {
   role: 'system' | 'user' | 'assistant';
   content: string;
+}
+
+export interface RouteDecision {
+  route: 'chat' | 'tool';
+  toolName?: string;
+  toolParams?: Record<string, any>;
+  reasoning?: string;
 }
 
 export interface ChatCompletionResponse {
@@ -17,8 +25,9 @@ export interface ChatCompletionResponse {
 
 export class OpenRouterService {
   private client: AxiosInstance;
+  private mcpClient: MCPClient;
 
-  constructor() {
+  constructor(mcpClient?: MCPClient) {
     this.client = axios.create({
       baseURL: config.openRouter.baseUrl,
       headers: {
@@ -26,6 +35,7 @@ export class OpenRouterService {
         'Content-Type': 'application/json',
       },
     });
+    this.mcpClient = mcpClient || new MCPClient();
   }
 
   async chatCompletion(messages: Message[], model?: string): Promise<string> {
@@ -102,5 +112,84 @@ export class OpenRouterService {
       console.error('Error routing query:', error);
       throw error;
     }
+  }
+
+  /**
+   * Determine if a query should use a tool and which one
+   */
+  async decideRoute(query: string): Promise<RouteDecision> {
+    try {
+      const availableTools = this.mcpClient.getAvailableTools();
+      const toolList = availableTools
+        .map((t) => `- ${t.name}: ${t.description}`)
+        .join('\n');
+
+      const routingPrompt: Message[] = [
+        {
+          role: 'system',
+          content: `You are a query router. Analyze the user's query and decide if it requires a tool or regular chat.
+
+Available tools:
+${toolList}
+
+Respond with ONLY a JSON object in this format:
+{
+  "route": "chat" | "tool",
+  "toolName": "tool_name" (only if route is "tool"),
+  "toolParams": {"param": "value"} (only if route is "tool"),
+  "reasoning": "brief explanation"
+}
+
+Use tools ONLY when explicitly needed (e.g., current time, web search). Default to "chat" for general conversation.`,
+        },
+        {
+          role: 'user',
+          content: query,
+        },
+      ];
+
+      const response = await this.chatCompletion(
+        routingPrompt,
+        config.openRouter.models.router
+      );
+
+      // Parse JSON response
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        // Default to chat if parsing fails
+        return { route: 'chat' };
+      }
+
+      const decision = JSON.parse(jsonMatch[0]) as RouteDecision;
+      return decision;
+    } catch (error) {
+      console.error('Error deciding route:', error);
+      // Default to chat on error
+      return { route: 'chat' };
+    }
+  }
+
+  /**
+   * Execute an MCP tool
+   */
+  async executeMCPTool(
+    toolName: string,
+    params: Record<string, any>
+  ): Promise<MCPToolResult> {
+    return await this.mcpClient.executeTool(toolName, params);
+  }
+
+  /**
+   * Get available MCP tools
+   */
+  getAvailableMCPTools(): Array<{ name: string; description: string }> {
+    return this.mcpClient.getAvailableTools();
+  }
+
+  /**
+   * Get the MCP client instance
+   */
+  getMCPClient(): MCPClient {
+    return this.mcpClient;
   }
 }

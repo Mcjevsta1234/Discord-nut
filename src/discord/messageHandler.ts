@@ -1,7 +1,8 @@
 import { Message as DiscordMessage, Client } from 'discord.js';
-import { OpenRouterService, Message } from '../ai/openRouterService';
+import { OpenRouterService, Message, RouteDecision } from '../ai/openRouterService';
 import { MemoryManager } from '../ai/memoryManager';
 import { PromptManager } from './promptManager';
+import { MCPToolResult } from '../mcp';
 
 export class MessageHandler {
   private client: Client;
@@ -80,11 +81,26 @@ export class MessageHandler {
         conversation
       );
 
-      // Get AI response
-      const response = await this.aiService.chatCompletion(
-        composedPrompt.messages,
-        composedPrompt.model
-      );
+      // Decide if we need to use a tool
+      const routeDecision = await this.aiService.decideRoute(message.content);
+
+      let response: string;
+
+      if (routeDecision.route === 'tool' && routeDecision.toolName) {
+        // Execute tool and summarize result
+        response = await this.handleToolExecution(
+          routeDecision,
+          message.content,
+          composedPrompt.messages,
+          composedPrompt.model
+        );
+      } else {
+        // Regular chat completion
+        response = await this.aiService.chatCompletion(
+          composedPrompt.messages,
+          composedPrompt.model
+        );
+      }
 
       // Add assistant response to memory
       await this.memoryManager.addMessage(channelId, {
@@ -96,7 +112,9 @@ export class MessageHandler {
       await this.sendResponse(message, response);
 
       console.log(
-        `Responded to ${message.author.username} in ${message.guild?.name || 'DM'}`
+        `Responded to ${message.author.username} in ${message.guild?.name || 'DM'}${
+          routeDecision.route === 'tool' ? ` (used tool: ${routeDecision.toolName})` : ''
+        }`
       );
     } catch (error) {
       console.error('Error handling message:', error);
@@ -159,6 +177,51 @@ export class MessageHandler {
       if ('send' in message.channel) {
         await message.channel.send(chunks[i]);
       }
+    }
+  }
+
+  /**
+   * Handle tool execution and summarize results back to user
+   */
+  private async handleToolExecution(
+    decision: RouteDecision,
+    userQuery: string,
+    conversationMessages: Message[],
+    model: string
+  ): Promise<string> {
+    try {
+      // Execute the tool
+      const toolResult = await this.aiService.executeMCPTool(
+        decision.toolName!,
+        decision.toolParams || {}
+      );
+
+      // Create a summary prompt that includes the tool result
+      const summaryPrompt: Message[] = [
+        ...conversationMessages,
+        {
+          role: 'assistant',
+          content: `I used the ${decision.toolName} tool. Here's the result:\n${JSON.stringify(
+            toolResult,
+            null,
+            2
+          )}`,
+        },
+        {
+          role: 'user',
+          content: `Based on the tool result above, provide a natural, conversational response to the user's query: "${userQuery}"`,
+        },
+      ];
+
+      // Get AI to summarize the result
+      const summary = await this.aiService.chatCompletion(summaryPrompt, model);
+
+      return summary;
+    } catch (error) {
+      console.error('Error executing tool:', error);
+      return `I tried to use a tool to help answer your question, but encountered an error: ${
+        error instanceof Error ? error.message : 'Unknown error'
+      }`;
     }
   }
 }

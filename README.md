@@ -13,7 +13,9 @@ A stable TypeScript Discord bot using discord.js v14 with OpenRouter AI integrat
 - 🔀 **Multiple AI Models**: Supports separate models for routing, chat, and summarization
 - ⚙️ **Configurable**: System prompts, personality, and example messages
 - 🏗️ **Clean Architecture**: Modular structure with separated Discord and AI logic
-- 🔒 **Secure**: Environment variables for all secrets
+- � **MCP Tools**: Model Context Protocol integration for extensible tool support
+- 🔍 **Web Search**: Built-in web search using DuckDuckGo (no API key required)
+- �🔒 **Secure**: Environment variables for all secrets
 - ✅ **Error Handling**: Comprehensive error handling and logging
 
 ## Architecture
@@ -24,10 +26,20 @@ src/
 ├── config.ts                # Configuration management
 ├── discord/
 │   ├── client.ts           # Discord client wrapper
-│   └── messageHandler.ts   # Message processing logic
-└── ai/
-    ├── openRouterService.ts # OpenRouter API integration
-    └── memoryManager.ts     # Conversation memory management
+│   ├── messageHandler.ts   # Message processing logic
+│   ├── promptManager.ts    # Per-channel prompt management
+│   └── adminCommands.ts    # Slash commands for configuration
+├── ai/
+│   ├── openRouterService.ts # OpenRouter API integration
+│   └── memoryManager.ts     # Conversation memory management
+└── mcp/
+    ├── index.ts            # MCP module exports
+    ├── client.ts           # MCP client abstraction
+    ├── toolRegistry.ts     # Tool registration and management
+    ├── types.ts            # MCP type definitions
+    └── tools/
+        ├── getTime.ts      # Get current time tool
+        └── webSearch.ts    # Web search tool (DuckDuckGo)
 ```
 
 ## Prerequisites
@@ -118,7 +130,135 @@ Default prompts are Discord-aware and can be overridden per channel (system prom
 | `BOT_PERSONALITY` | Bot's personality description | friendly, helpful, and slightly humorous |
 | `BOT_MAX_MEMORY_MESSAGES` | Max messages to keep in memory | 10 |
 | `BOT_ENABLE_SUMMARY` | Enable conversation summarization | true |
-| `OPENROUTER_MODEL_ROUTER` | Model for query routing | openai/gpt-3.5-turbo |
+| `OPENROUTER_MODEL_ROUTER` | Model for query routing | openai/gpt-3.
+
+## MCP (Model Context Protocol) Integration
+
+The bot includes built-in support for MCP tools, which allow the AI to perform actions beyond simple chat responses. Tools are automatically selected when appropriate and results are summarized back to the user.
+
+### What is MCP?
+
+MCP (Model Context Protocol) provides a standardized way to give AI models access to external tools and data sources. In this bot:
+
+- The AI router automatically decides when to use a tool vs. normal chat
+- Tools are executed safely with read-only access
+- Results are formatted and presented naturally to users
+- Normal chat behavior is preserved unless a tool is explicitly needed
+
+### Available Tools
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `get_time` | Get current date/time | `format` (iso/locale/unix), `timezone` (optional) |
+| `web_search` | Search the web via DuckDuckGo | `query` (required), `max_results` (1-10, default 5) |
+
+**Note**: Web search uses DuckDuckGo HTML scraping and requires **no API keys**.
+
+### Where MCP Tools Live
+
+All MCP tools are located in the `src/mcp/` directory:
+
+- `src/mcp/tools/` - Individual tool implementations
+- `src/mcp/toolRegistry.ts` - Tool registration system
+- `src/mcp/client.ts` - MCP client for tool execution
+- `src/mcp/index.ts` - Tool registration and exports
+
+### How to Add a New Read-Only Tool
+
+1. **Create your tool file** in `src/mcp/tools/yourTool.ts`:
+
+```typescript
+import { MCPTool, MCPToolDefinition, MCPToolResult } from '../types';
+
+export class YourTool implements MCPTool {
+  definition: MCPToolDefinition = {
+    name: 'your_tool',
+    description: 'What your tool does',
+    parameters: [
+      {
+        name: 'param_name',
+        type: 'string',
+        description: 'Parameter description',
+        required: true,
+      },
+    ],
+  };
+
+  async execute(params: Record<string, any>): Promise<MCPToolResult> {
+    try {
+      // Your tool logic here
+      const result = params.param_name;
+
+      return {
+        success: true,
+        data: { result },
+      };
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+}
+```
+
+2. **Register your tool** in `src/mcp/index.ts`:
+
+```typescript
+import { YourTool } from './tools/yourTool';
+
+export function registerDefaultTools(mcpClient: MCPClient): void {
+  const registry = mcpClient.getToolRegistry();
+
+  registry.register(new GetTimeTool());
+  registry.register(new WebSearchTool());
+  registry.register(new YourTool()); // Add your tool here
+
+  console.log(`Registered ${registry.count()} MCP tools`);
+}
+```
+
+3. **Export your tool** (optional, for direct imports):
+
+```typescript
+export { YourTool } from './tools/yourTool';
+```
+
+That's it! The bot will automatically:
+- Make your tool available to the AI router
+- Decide when to use it based on user queries
+- Execute it safely and summarize results
+
+### MCP Constraints
+
+For safety and stability, all MCP tools in this bot are **read-only** with:
+- ❌ No shell/terminal access
+- ❌ No filesystem writes
+- ❌ No GitHub writes or mutations
+- ✅ Safe data fetching and computation only
+
+### Editing the Model List
+
+The list of allowed chat models is configured in your `.env` file:
+
+```bash
+OPENROUTER_ALLOWED_CHAT_MODELS=openai/gpt-3.5-turbo,openai/gpt-4o-mini,anthropic/claude-3.5-sonnet
+```
+
+To add or remove models:
+1. Edit the `OPENROUTER_ALLOWED_CHAT_MODELS` variable in `.env`
+2. Add model IDs as a comma-separated list
+3. Restart the bot for changes to take effect
+
+You can find available models at [OpenRouter Models](https://openrouter.ai/models).
+
+To change the default models for routing, chat, and summarization:
+```bash
+OPENROUTER_MODEL_ROUTER=openai/gpt-3.5-turbo
+OPENROUTER_MODEL_CHAT=openai/gpt-3.5-turbo
+OPENROUTER_MODEL_SUMMARIZER=openai/gpt-3.5-turbo
+```5-turbo |
 | `OPENROUTER_MODEL_CHAT` | Model for chat responses | openai/gpt-3.5-turbo |
 | `OPENROUTER_MODEL_SUMMARIZER` | Model for summarization | openai/gpt-3.5-turbo |
 
