@@ -7,6 +7,10 @@ import { MCPClient } from './client';
 import { GetTimeTool } from './tools/getTime';
 import { WebSearchTool } from './tools/webSearch';
 import { MinecraftStatusTool } from './tools/minecraftStatus';
+import { GitHubInfoTool } from './tools/githubInfo';
+import { CalculatorTool } from './tools/calculator';
+import { UnitConverterTool } from './tools/unitConverter';
+import { InfoUtilsTool } from './tools/infoUtils';
 
 /**
  * Register all default MCP tools with the client
@@ -18,6 +22,10 @@ export function registerDefaultTools(mcpClient: MCPClient): void {
   registry.register(new GetTimeTool());
   registry.register(new WebSearchTool());
   registry.register(new MinecraftStatusTool());
+  registry.register(new GitHubInfoTool());
+  registry.register(new CalculatorTool());
+  registry.register(new UnitConverterTool());
+  registry.register(new InfoUtilsTool());
 
   console.log(`Registered ${registry.count()} MCP tools`);
 }
@@ -31,3 +39,7 @@ export * from './types';
 export { GetTimeTool } from './tools/getTime';
 export { WebSearchTool } from './tools/webSearch';
 export { MinecraftStatusTool } from './tools/minecraftStatus';
+export { GitHubInfoTool } from './tools/githubInfo';
+export { CalculatorTool } from './tools/calculator';
+export { UnitConverterTool } from './tools/unitConverter';
+export { InfoUtilsTool } from './tools/infoUtils';

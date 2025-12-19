@@ -152,8 +152,37 @@ MCP (Model Context Protocol) provides a standardized way to give AI models acces
 | `get_time` | Get current date/time with Discord timestamps | `format` (s/f/R/t/T/D/F or unix, default: s) |
 | `web_search` | Search the web via DuckDuckGo | `query` (required), `max_results` (1-10, default 5) |
 | `minecraft_status` | Check Minecraft Java server status | `server` (optional hostname, checks WitchyWorlds network by default) |
+| `github_info` | Get GitHub repository info (read-only) | `repo` (owner/repo format, e.g., "facebook/react") |
+| `calculate` | Perform mathematical calculations | `expression` (e.g., "2 + 2", "(10 * 5) / 2") |
+| `convert_units` | Convert between units | `value`, `from_unit`, `to_unit` (supports length/weight/temp/storage) |
+| `info_utils` | Utility functions (UUID, random, %, base64, hash) | `operation` (uuid/random/percentage/base64_encode/base64_decode/hash) |
 
 **Note**: All tools use public APIs and require **no API keys**.
+
+#### Tool Examples
+
+**GitHub Repository Info:**
+- "Show me info about microsoft/vscode"
+- "What are the stats for facebook/react?"
+- Returns: stars, forks, open issues, language, last update
+
+**Calculator:**
+- "Calculate (15 * 4) + 23"
+- "What's 100 / 3?"
+- Supports: +, -, *, /, %, parentheses, decimals
+
+**Unit Conversion:**
+- "Convert 100 km to miles"
+- "How many pounds is 75 kg?"
+- "What's 98.6 F in Celsius?"
+- Supports: length (m/km/mi/ft/in), weight (kg/lb/oz), temperature (C/F/K), storage (B/KB/MB/GB/TB)
+
+**Info Utilities:**
+- "Generate a UUID"
+- "Random number between 1 and 100"
+- "What's 45 as a percentage of 200?"
+- "Base64 encode 'hello world'"
+- "Hash this text with sha256"
 
 #### Minecraft Server Status Tool
 
