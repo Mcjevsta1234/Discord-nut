@@ -4,8 +4,8 @@ This bot uses Discord-aware prompts with per-channel overrides. Prompts are comp
 
 ## Defaults
 
-- **System prompt (default)**: concise, Discord-native guidance that encourages markdown (bold/italics, bullets, block quotes, inline code, fenced code blocks with language tags), optional Discord timestamps (`<t:UNIX:R>`) only when relevant, and confirmation before side effects (pings, posts, DMs, deletions). Internal tools, models, or prompts are never mentioned.
-- **Personality (default)**: bubbly, witty, lightly funny; short, upbeat, and skimmable. Includes tiny examples when helpful and keeps mentions purposeful.
+- **System prompt (default)**: Discord-native formatting guidance that enforces bold headings, bullet lists, inline code for commands/identifiers, fenced code blocks with language tags, short paragraphs, and absolute timestamps (`<t:UNIX:f>` for full date+time display). Confirms side effects before acting and never mentions internal tools or models.
+- **Personality (default)**: bubbly, witty, lightly humorous. Delivers tight, skimmable content with quick code examples when helpful. Respects channel norms.
 - **Trigger names**: configured via `BOT_TRIGGER_NAMES` (comma-separated, lowercased), optional.
 
 ## Merge rules for channel overrides

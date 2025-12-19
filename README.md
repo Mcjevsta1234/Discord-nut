@@ -149,7 +149,7 @@ MCP (Model Context Protocol) provides a standardized way to give AI models acces
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| `get_time` | Get current date/time | `format` (iso/locale/unix), `timezone` (optional) |
+| `get_time` | Get current date/time with Discord absolute timestamps | `format` (discord/iso/locale/unix), `timezone` (optional) |
 | `web_search` | Search the web via DuckDuckGo | `query` (required), `max_results` (1-10, default 5) |
 
 **Note**: Web search uses DuckDuckGo HTML scraping and requires **no API keys**.

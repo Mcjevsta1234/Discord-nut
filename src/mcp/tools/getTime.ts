@@ -8,12 +8,12 @@ import { MCPTool, MCPToolDefinition, MCPToolResult } from '../types';
 export class GetTimeTool implements MCPTool {
   definition: MCPToolDefinition = {
     name: 'get_time',
-    description: 'Get the current date and time. Returns Discord-formatted timestamp by default for user-facing messages.',
+    description: 'Get the current date and time. Returns Discord absolute timestamp by default for user-facing messages.',
     parameters: [
       {
         name: 'format',
         type: 'string',
-        description: 'Optional format: "discord" (default, returns <t:UNIX:R>), "iso", "locale", or "unix"',
+        description: 'Optional format: "discord" (default, returns <t:UNIX:f> absolute), "iso", "locale", or "unix"',
         required: false,
         default: 'discord',
       },
@@ -38,9 +38,9 @@ export class GetTimeTool implements MCPTool {
 
       switch (format) {
         case 'discord':
-          // Return Discord relative timestamp format for chat-friendly display
-          timeString = `<t:${unixTimestamp}:R>`;
-          additionalInfo.note = 'Discord relative timestamp (auto-updates in chat)';
+          // Return Discord absolute timestamp format for chat-friendly display
+          timeString = `<t:${unixTimestamp}:f>`;
+          additionalInfo.note = 'Discord absolute timestamp (full date and time)';
           break;
         case 'iso':
           timeString = now.toISOString();
