@@ -153,7 +153,7 @@ For tool usage:
 For image generation (ONLY when user explicitly or clearly requests visual/image creation):
 {
   "route": "image",
-  "imagePrompt": "detailed image description",
+  "imagePrompt": "user's exact prompt",
   "imageResolution": {"width": 512, "height": 512},
   "reasoning": "brief explanation"
 }
@@ -162,7 +162,8 @@ Routing rules:
 - Use "image" route ONLY when user explicitly asks for image generation, pictures, drawings, or visual content
 - If unclear whether they want an image, use "chat" and ask for clarification
 - Use "tool" when explicitly needed (e.g., current time, web search, calculations)
-- Default to "chat" for general conversation`,
+- Default to "chat" for general conversation
+- For imagePrompt: Use the user's EXACT words/prompt without modification. Do NOT add details, improvements, or elaborations unless the user specifically requests you to "enhance", "improve", or "add details to" their prompt`,
         },
         {
           role: 'user',
