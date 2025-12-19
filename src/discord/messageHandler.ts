@@ -105,6 +105,7 @@ export class MessageHandler {
 
       // Decide if we need to use a tool
       const routeDecision = await this.aiService.decideRoute(message.content);
+      console.log(`Route decision: ${routeDecision.route}${routeDecision.toolName ? ` (tool: ${routeDecision.toolName})` : ''}`);
 
       if (routeDecision.route === 'image') {
         // Handle image generation
@@ -116,18 +117,26 @@ export class MessageHandler {
 
       if (routeDecision.route === 'tool' && routeDecision.toolName) {
         // Execute tool and summarize result
+        console.log(`Executing tool: ${routeDecision.toolName} with params:`, routeDecision.toolParams);
         response = await this.handleToolExecution(
           routeDecision,
           message.content,
           composedPrompt.messages,
           composedPrompt.model
         );
+        console.log(`Tool execution complete, response length: ${response?.length || 0}`);
       } else {
         // Regular chat completion
         response = await this.aiService.chatCompletion(
           composedPrompt.messages,
           composedPrompt.model
         );
+      }
+
+      // Ensure we have a valid response
+      if (!response || response.trim().length === 0) {
+        console.warn('Empty response received, using fallback');
+        response = 'I processed your request, but I don\'t have a response to share.';
       }
 
       // Add assistant response to memory
@@ -161,59 +170,81 @@ export class MessageHandler {
     message: DiscordMessage,
     response: string
   ): Promise<DiscordMessage | null> {
-    // Discord message limit is 2000 characters
-    const MAX_LENGTH = 2000;
+    try {
+      // Validate response
+      if (!response || response.trim().length === 0) {
+        console.warn('Attempted to send empty response, using fallback');
+        response = 'I processed your request.';
+      }
 
-    if (response.length <= MAX_LENGTH) {
-      const sentMessage = await message.reply(response);
-      return sentMessage;
-    }
+      // Discord message limit is 2000 characters
+      const MAX_LENGTH = 2000;
 
-    // Split into chunks
-    const chunks: string[] = [];
-    let currentChunk = '';
+      if (response.length <= MAX_LENGTH) {
+        const sentMessage = await message.reply(response);
+        return sentMessage;
+      }
 
-    const lines = response.split('\n');
-    for (const line of lines) {
-      if ((currentChunk + line + '\n').length > MAX_LENGTH) {
-        if (currentChunk) {
-          chunks.push(currentChunk.trim());
-          currentChunk = '';
-        }
+      // Split into chunks
+      const chunks: string[] = [];
+      let currentChunk = '';
 
-        // If a single line is too long, split it by words
-        if (line.length > MAX_LENGTH) {
-          const words = line.split(' ');
-          for (const word of words) {
-            if ((currentChunk + word + ' ').length > MAX_LENGTH) {
-              chunks.push(currentChunk.trim());
-              currentChunk = word + ' ';
-            } else {
-              currentChunk += word + ' ';
+      const lines = response.split('\n');
+      for (const line of lines) {
+        if ((currentChunk + line + '\n').length > MAX_LENGTH) {
+          if (currentChunk) {
+            chunks.push(currentChunk.trim());
+            currentChunk = '';
+          }
+
+          // If a single line is too long, split it by words
+          if (line.length > MAX_LENGTH) {
+            const words = line.split(' ');
+            for (const word of words) {
+              if ((currentChunk + word + ' ').length > MAX_LENGTH) {
+                chunks.push(currentChunk.trim());
+                currentChunk = word + ' ';
+              } else {
+                currentChunk += word + ' ';
+              }
             }
+          } else {
+            currentChunk = line + '\n';
           }
         } else {
-          currentChunk = line + '\n';
+          currentChunk += line + '\n';
         }
-      } else {
-        currentChunk += line + '\n';
       }
-    }
 
-    if (currentChunk.trim()) {
-      chunks.push(currentChunk.trim());
-    }
-
-    // Send first chunk as reply, rest as follow-ups
-    const firstMessage = await message.reply(chunks[0]);
-    for (let i = 1; i < chunks.length; i++) {
-      if ('send' in message.channel) {
-        await message.channel.send(chunks[i]);
+      if (currentChunk.trim()) {
+        chunks.push(currentChunk.trim());
       }
-    }
 
-    // Return the first message for persona tracking
-    return firstMessage;
+      // Ensure we have at least one chunk
+      if (chunks.length === 0) {
+        chunks.push('Response was empty.');
+      }
+
+      // Send first chunk as reply, rest as follow-ups
+      const firstMessage = await message.reply(chunks[0]);
+      for (let i = 1; i < chunks.length; i++) {
+        if ('send' in message.channel) {
+          await message.channel.send(chunks[i]);
+        }
+      }
+
+      // Return the first message for persona tracking
+      return firstMessage;
+    } catch (error) {
+      console.error('Error sending response:', error);
+      // Attempt to send a simple error message
+      try {
+        await message.reply('I encountered an error sending my response.');
+      } catch (fallbackError) {
+        console.error('Failed to send fallback error message:', fallbackError);
+      }
+      return null;
+    }
   }
 
   /**
@@ -231,6 +262,11 @@ export class MessageHandler {
         decision.toolName!,
         decision.toolParams || {}
       );
+
+      // Ensure toolResult is valid
+      if (!toolResult) {
+        return `I tried to use the ${decision.toolName} tool, but it returned no result.`;
+      }
 
       // Create a summary prompt that includes the tool result
       const summaryPrompt: Message[] = [
@@ -252,12 +288,17 @@ export class MessageHandler {
       // Get AI to summarize the result
       const summary = await this.aiService.chatCompletion(summaryPrompt, model);
 
+      // Ensure summary is valid
+      if (!summary || summary.trim().length === 0) {
+        // Fallback: return raw tool result as formatted JSON
+        return `Tool Result:\n\`\`\`json\n${JSON.stringify(toolResult, null, 2)}\n\`\`\``;
+      }
+
       return summary;
     } catch (error) {
       console.error('Error executing tool:', error);
-      return `I tried to use a tool to help answer your question, but encountered an error: ${
-        error instanceof Error ? error.message : 'Unknown error'
-      }`;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      return `I tried to use the ${decision.toolName || 'a'} tool, but encountered an error: ${errorMessage}`;
     }
   }
 
