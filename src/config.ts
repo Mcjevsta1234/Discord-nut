@@ -17,6 +17,17 @@ export interface Config {
     };
     allowedChatModels: string[];
   };
+  image: {
+    model: string;
+    defaultResolution: {
+      width: number;
+      height: number;
+    };
+    maxResolution: {
+      width: number;
+      height: number;
+    };
+  };
   bot: {
     systemPrompt: string;
     personality: string;
@@ -63,6 +74,17 @@ export const config: Config = {
       'OPENROUTER_ALLOWED_CHAT_MODELS',
       'openai/gpt-3.5-turbo,openai/gpt-4o-mini,anthropic/claude-3.5-sonnet'
     ),
+  },
+  image: {
+    model: getEnvVar('IMAGE_MODEL', 'google/gemini-2.0-flash-exp:free'),
+    defaultResolution: {
+      width: parseInt(getEnvVar('IMAGE_DEFAULT_WIDTH', '512'), 10),
+      height: parseInt(getEnvVar('IMAGE_DEFAULT_HEIGHT', '512'), 10),
+    },
+    maxResolution: {
+      width: parseInt(getEnvVar('IMAGE_MAX_WIDTH', '1024'), 10),
+      height: parseInt(getEnvVar('IMAGE_MAX_HEIGHT', '1024'), 10),
+    },
   },
   bot: {
     systemPrompt: getEnvVar(

@@ -1,5 +1,6 @@
-import { Message as DiscordMessage, Client } from 'discord.js';
+import { Message as DiscordMessage, Client, AttachmentBuilder } from 'discord.js';
 import { OpenRouterService, Message, RouteDecision } from '../ai/openRouterService';
+import { ImageService } from '../ai/imageService';
 import { MemoryManager } from '../ai/memoryManager';
 import { PromptManager } from './promptManager';
 import { MCPToolResult } from '../mcp';
@@ -7,6 +8,7 @@ import { MCPToolResult } from '../mcp';
 export class MessageHandler {
   private client: Client;
   private aiService: OpenRouterService;
+  private imageService: ImageService;
   private memoryManager: MemoryManager;
   private promptManager: PromptManager;
 
@@ -18,6 +20,7 @@ export class MessageHandler {
   ) {
     this.client = client;
     this.aiService = aiService;
+    this.imageService = new ImageService();
     this.memoryManager = memoryManager;
     this.promptManager = promptManager;
   }
@@ -83,6 +86,12 @@ export class MessageHandler {
 
       // Decide if we need to use a tool
       const routeDecision = await this.aiService.decideRoute(message.content);
+
+      if (routeDecision.route === 'image') {
+        // Handle image generation
+        await this.handleImageGeneration(message, routeDecision);
+        return; // Image sent directly, no text response needed
+      }
 
       let response: string;
 
@@ -222,6 +231,64 @@ export class MessageHandler {
       return `I tried to use a tool to help answer your question, but encountered an error: ${
         error instanceof Error ? error.message : 'Unknown error'
       }`;
+    }
+  }
+
+  /**
+   * Handle image generation request
+   */
+  private async handleImageGeneration(
+    message: DiscordMessage,
+    decision: RouteDecision
+  ): Promise<void> {
+    try {
+      // Parse resolution from prompt if specified
+      const resolution = this.imageService.parseResolutionFromPrompt(
+        decision.imagePrompt || message.content
+      );
+
+      // Generate image
+      const result = await this.imageService.generateImage({
+        prompt: decision.imagePrompt || message.content,
+        width: decision.imageResolution?.width || resolution.width,
+        height: decision.imageResolution?.height || resolution.height,
+      });
+
+      // Check if image is Discord-safe
+      if (!this.imageService.isDiscordSafe(result.sizeBytes)) {
+        await message.reply(
+          `⚠️ The generated image is too large for Discord (${Math.round(
+            result.sizeBytes / (1024 * 1024)
+          )}MB). Even after compression, it exceeds the 8MB limit. Try requesting a smaller resolution.`
+        );
+        return;
+      }
+
+      // Create attachment
+      const attachment = new AttachmentBuilder(result.imageBuffer, {
+        name: 'generated-image.png',
+      });
+
+      // Send with a short caption
+      const caption = `🎨 **Generated Image**\n*${
+        decision.imagePrompt || message.content
+      }*\nResolution: ${result.resolution.width}×${result.resolution.height}`;
+
+      await message.reply({
+        content: caption,
+        files: [attachment],
+      });
+
+      console.log(
+        `Generated image for ${message.author.username}: ${result.resolution.width}×${result.resolution.height}, ${result.sizeBytes} bytes`
+      );
+    } catch (error) {
+      console.error('Error generating image:', error);
+      await message.reply(
+        `Sorry, I encountered an error generating your image: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`
+      );
     }
   }
 }

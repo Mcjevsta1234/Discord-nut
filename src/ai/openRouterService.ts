@@ -8,9 +8,11 @@ export interface Message {
 }
 
 export interface RouteDecision {
-  route: 'chat' | 'tool';
+  route: 'chat' | 'tool' | 'image';
   toolName?: string;
   toolParams?: Record<string, any>;
+  imagePrompt?: string;
+  imageResolution?: { width: number; height: number };
   reasoning?: string;
 }
 
@@ -127,20 +129,40 @@ export class OpenRouterService {
       const routingPrompt: Message[] = [
         {
           role: 'system',
-          content: `You are a query router. Analyze the user's query and decide if it requires a tool or regular chat.
+          content: `You are a query router. Analyze the user's query and decide if it requires a tool, image generation, or regular chat.
 
 Available tools:
 ${toolList}
 
 Respond with ONLY a JSON object in this format:
+
+For regular chat:
 {
-  "route": "chat" | "tool",
-  "toolName": "tool_name" (only if route is "tool"),
-  "toolParams": {"param": "value"} (only if route is "tool"),
+  "route": "chat",
   "reasoning": "brief explanation"
 }
 
-Use tools ONLY when explicitly needed (e.g., current time, web search). Default to "chat" for general conversation.`,
+For tool usage:
+{
+  "route": "tool",
+  "toolName": "tool_name",
+  "toolParams": {"param": "value"},
+  "reasoning": "brief explanation"
+}
+
+For image generation (ONLY when user explicitly or clearly requests visual/image creation):
+{
+  "route": "image",
+  "imagePrompt": "detailed image description",
+  "imageResolution": {"width": 512, "height": 512},
+  "reasoning": "brief explanation"
+}
+
+Routing rules:
+- Use "image" route ONLY when user explicitly asks for image generation, pictures, drawings, or visual content
+- If unclear whether they want an image, use "chat" and ask for clarification
+- Use "tool" when explicitly needed (e.g., current time, web search, calculations)
+- Default to "chat" for general conversation`,
         },
         {
           role: 'user',

@@ -9,13 +9,14 @@ A stable TypeScript Discord bot using discord.js v14 with OpenRouter AI integrat
   - Someone replies to the bot's message
   - Bot name appears in the message
 - 💬 **Conversational AI**: Acts as a natural conversational assistant
+- 🎨 **Image Generation**: Automatic image generation with cost-aware routing and Discord-safe output
 - 🧠 **Token-Efficient Memory**: Uses conversation summaries + recent messages to minimize token usage
-- 🔀 **Multiple AI Models**: Supports separate models for routing, chat, and summarization
+- 🔀 **Multiple AI Models**: Supports separate models for routing, chat, summarization, and images
 - ⚙️ **Configurable**: System prompts, personality, and example messages
 - 🏗️ **Clean Architecture**: Modular structure with separated Discord and AI logic
-- � **MCP Tools**: Model Context Protocol integration for extensible tool support
+- 🛠️ **MCP Tools**: Model Context Protocol integration for extensible tool support (7 tools available)
 - 🔍 **Web Search**: Built-in web search using DuckDuckGo (no API key required)
-- �🔒 **Secure**: Environment variables for all secrets
+- 🔒 **Secure**: Environment variables for all secrets
 - ✅ **Error Handling**: Comprehensive error handling and logging
 
 ## Architecture
@@ -288,6 +289,83 @@ For safety and stability, all MCP tools in this bot are **read-only** with:
 - ❌ No filesystem writes
 - ❌ No GitHub writes or mutations
 - ✅ Safe data fetching and computation only
+
+## Image Generation
+
+The bot includes automatic image generation capabilities with cost-aware routing and Discord-safe output.
+
+### How It Works
+
+The bot automatically detects when you want to generate an image and routes your request appropriately:
+
+**Triggers image generation:**
+- "Generate an image of..."
+- "Create a picture of..."
+- "Draw me..."
+- "Make an image showing..."
+
+**Stays in regular chat:**
+- General conversation
+- Questions about images
+- Requests that mention images but don't ask to create them
+
+If your request is ambiguous, the bot will ask for clarification rather than assume you want image generation.
+
+### Resolution & Aspect Ratios
+
+**Default Resolution:** 512×512 pixels (optimized for cost and Discord compatibility)
+
+**Supported Resolutions:**
+- **Small:** 128×128, 256×256
+- **Default:** 512×512
+- **Medium:** 768×768
+- **Large:** 1024×1024
+
+**Non-Square Aspect Ratios** (only when explicitly requested):
+- **16:9 Landscape:** 768×432 or 1024×576
+- **9:16 Portrait:** 432×768 or 576×1024
+- **Banner:** 1024×256
+
+**How to Request Specific Resolutions:**
+- "Generate a 1024×1024 image of..."
+- "Create a large landscape image of..."
+- "Make a small 256×256 portrait of..."
+- "Draw a banner showing..."
+
+### Discord File Size Handling
+
+Discord has an 8MB upload limit. The bot automatically:
+1. Generates the image at your requested resolution
+2. Checks the file size
+3. Compresses the image if it exceeds 8MB
+4. Downscales if compression isn't enough
+5. If still too large, responds with a chat message instead
+
+This ensures you always get a response, even if the image can't be uploaded.
+
+### Cost-Conscious Design
+
+- Uses `google/gemini-2.0-flash-exp:free` by default (free tier)
+- Defaults to 512×512 to minimize image-token usage
+- Only generates larger images when explicitly requested
+- Never exceeds configured maximum resolution
+
+### Configuration
+
+Set these in your `.env` file:
+
+```bash
+# Image model (default: free tier Gemini Flash)
+IMAGE_MODEL=google/gemini-2.0-flash-exp:free
+
+# Default resolution
+IMAGE_DEFAULT_WIDTH=512
+IMAGE_DEFAULT_HEIGHT=512
+
+# Maximum allowed resolution
+IMAGE_MAX_WIDTH=1024
+IMAGE_MAX_HEIGHT=1024
+```
 
 ### Editing the Model List
 
