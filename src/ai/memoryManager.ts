@@ -64,35 +64,14 @@ export class MemoryManager {
     }
   }
 
-  buildMessageHistory(channelId: string): Message[] {
+  getConversationContext(channelId: string): ConversationMemory {
     const memory = this.getMemory(channelId);
-    const messages: Message[] = [];
-
-    // Add system prompt
-    messages.push({
-      role: 'system',
-      content: `${config.bot.systemPrompt}\n\nYour personality is: ${config.bot.personality}`,
-    });
-
-    // Add example messages if configured
-    if (config.bot.exampleMessages.length > 0) {
-      messages.push(...config.bot.exampleMessages);
-    }
-
-    // Add summary if exists
-    if (memory.summary) {
-      messages.push({
-        role: 'system',
-        content: `Previous conversation summary: ${memory.summary}`,
-      });
-    }
-
-    // Add recent messages (keep only the last N messages)
     const recentCount = config.bot.maxMemoryMessages;
-    const recentMessages = memory.recentMessages.slice(-recentCount);
-    messages.push(...recentMessages);
 
-    return messages;
+    return {
+      summary: memory.summary,
+      recentMessages: memory.recentMessages.slice(-recentCount),
+    };
   }
 
   clearMemory(channelId: string): void {
