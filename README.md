@@ -82,6 +82,24 @@ npm start
 
 ## Configuration
 
+### Prompt configuration
+
+Default prompts are Discord-aware and can be overridden per channel (system prompt, chat model, trigger names). See [docs/prompts.md](docs/prompts.md) for defaults, merge rules, and admin slash commands.
+
+### Models and routing
+
+- Chat/summarization/router defaults are set via `OPENROUTER_MODEL_CHAT`, `OPENROUTER_MODEL_SUMMARIZER`, and `OPENROUTER_MODEL_ROUTER`.
+- The `/set-chat-model` allowlist (/models list) lives in `OPENROUTER_ALLOWED_CHAT_MODELS` inside `src/config.ts` (comma-separated env var). Update that list to permit a new model for channels.
+- The router can send requests straight to chat or through MCP tools. Defaults fall back to chat if routing is unsure.
+
+### MCP tools (read-only)
+
+- MCP (Model Context Protocol) tools live in `src/mcp` (`client.ts`, `tools.ts`). The Discord handlers stay separate and only receive summarized results.
+- Included tools:
+  - `get_time`: returns the current UTC timestamp.
+  - `web_search`: scrapes DuckDuckGo HTML for the top 5 results (title, URL, snippet). No API keys are used; results are read-only, may omit pages, and are limited to brief snippets.
+- When the router chooses a TOOL route, the bot runs the MCP tool, then the chat agent summarizes the output back to Discord.
+
 ### Discord Bot Setup
 
 1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
@@ -114,9 +132,11 @@ npm start
 | `BOT_PERSONALITY` | Bot's personality description | friendly, helpful, and slightly humorous |
 | `BOT_MAX_MEMORY_MESSAGES` | Max messages to keep in memory | 10 |
 | `BOT_ENABLE_SUMMARY` | Enable conversation summarization | true |
+| `BOT_TRIGGER_NAMES` | Comma-separated trigger keywords (lowercased) | *(empty)* |
 | `OPENROUTER_MODEL_ROUTER` | Model for query routing | openai/gpt-3.5-turbo |
 | `OPENROUTER_MODEL_CHAT` | Model for chat responses | openai/gpt-3.5-turbo |
 | `OPENROUTER_MODEL_SUMMARIZER` | Model for summarization | openai/gpt-3.5-turbo |
+| `OPENROUTER_ALLOWED_CHAT_MODELS` | Comma-separated allowlist for `/set-chat-model` | openai/gpt-3.5-turbo,openai/gpt-4o-mini,anthropic/claude-3.5-sonnet |
 
 ## Memory Management
 

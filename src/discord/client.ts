@@ -3,12 +3,21 @@ import { config } from '../config';
 import { MessageHandler } from './messageHandler';
 import { OpenRouterService } from '../ai/openRouterService';
 import { MemoryManager } from '../ai/memoryManager';
+import { PromptManager } from './promptManager';
+import { AdminCommandHandler } from './adminCommands';
+import { RouterService } from '../ai/routerService';
+import { McpClient } from '../mcp/client';
+import { listTools } from '../mcp/tools';
 
 export class DiscordBot {
   private client: Client;
   private messageHandler: MessageHandler;
   private aiService: OpenRouterService;
   private memoryManager: MemoryManager;
+  private promptManager: PromptManager;
+  private adminCommands: AdminCommandHandler;
+  private routerService: RouterService;
+  private mcpClient: McpClient;
 
   constructor() {
     // Initialize Discord client with required intents
@@ -24,12 +33,26 @@ export class DiscordBot {
     // Initialize AI services
     this.aiService = new OpenRouterService();
     this.memoryManager = new MemoryManager(this.aiService);
+    this.promptManager = new PromptManager();
+    this.mcpClient = new McpClient();
+    this.routerService = new RouterService(
+      this.aiService,
+      listTools().map((tool) => tool.name)
+    );
 
     // Initialize message handler
     this.messageHandler = new MessageHandler(
       this.client,
       this.aiService,
-      this.memoryManager
+      this.memoryManager,
+      this.promptManager,
+      this.routerService,
+      this.mcpClient
+    );
+
+    this.adminCommands = new AdminCommandHandler(
+      this.client,
+      this.promptManager
     );
 
     this.setupEventHandlers();
@@ -40,6 +63,12 @@ export class DiscordBot {
     this.client.once(Events.ClientReady, (readyClient) => {
       console.log(`✅ Bot is ready! Logged in as ${readyClient.user.tag}`);
       console.log(`📊 Serving ${readyClient.guilds.cache.size} guilds`);
+      this.adminCommands
+        .registerCommands()
+        .then(() => console.log('Slash commands registered'))
+        .catch((error) =>
+          console.error('Failed to register slash commands:', error)
+        );
     });
 
     // Message event
@@ -48,6 +77,14 @@ export class DiscordBot {
         await this.messageHandler.handleMessage(message);
       } catch (error) {
         console.error('Error in message handler:', error);
+      }
+    });
+
+    this.client.on(Events.InteractionCreate, async (interaction) => {
+      try {
+        await this.adminCommands.handleInteraction(interaction);
+      } catch (error) {
+        console.error('Error handling interaction:', error);
       }
     });
 
