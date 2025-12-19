@@ -1,20 +1,24 @@
 import { Message as DiscordMessage, Client } from 'discord.js';
 import { OpenRouterService, Message } from '../ai/openRouterService';
 import { MemoryManager } from '../ai/memoryManager';
+import { PromptManager } from './promptManager';
 
 export class MessageHandler {
   private client: Client;
   private aiService: OpenRouterService;
   private memoryManager: MemoryManager;
+  private promptManager: PromptManager;
 
   constructor(
     client: Client,
     aiService: OpenRouterService,
-    memoryManager: MemoryManager
+    memoryManager: MemoryManager,
+    promptManager: PromptManager
   ) {
     this.client = client;
     this.aiService = aiService;
     this.memoryManager = memoryManager;
+    this.promptManager = promptManager;
   }
 
   shouldRespond(message: DiscordMessage): boolean {
@@ -26,6 +30,7 @@ export class MessageHandler {
 
     const botId = this.client.user?.id;
     const botName = this.client.user?.username?.toLowerCase();
+    const channelTriggers = this.promptManager.getTriggerNames(message.channelId);
 
     // Check if bot is mentioned
     const isMentioned = message.mentions.has(botId || '');
@@ -36,11 +41,13 @@ export class MessageHandler {
       message.type === 19; // REPLY type
 
     // Check if bot name appears in message
-    const containsBotName = Boolean(
-      botName && message.content.toLowerCase().includes(botName)
+    const contentLower = message.content.toLowerCase();
+    const containsBotName = Boolean(botName && contentLower.includes(botName));
+    const containsTrigger = channelTriggers.some((trigger) =>
+      contentLower.includes(trigger)
     );
 
-    return isMentioned || isRepliedTo || containsBotName;
+    return isMentioned || isRepliedTo || containsBotName || containsTrigger;
   }
 
   async handleMessage(message: DiscordMessage): Promise<void> {
@@ -67,10 +74,17 @@ export class MessageHandler {
       await this.memoryManager.addMessage(channelId, userMessage);
 
       // Get message history
-      const messageHistory = this.memoryManager.buildMessageHistory(channelId);
+      const conversation = this.memoryManager.getConversationContext(channelId);
+      const composedPrompt = this.promptManager.composeChatPrompt(
+        channelId,
+        conversation
+      );
 
       // Get AI response
-      const response = await this.aiService.chatCompletion(messageHistory);
+      const response = await this.aiService.chatCompletion(
+        composedPrompt.messages,
+        composedPrompt.model
+      );
 
       // Add assistant response to memory
       await this.memoryManager.addMessage(channelId, {

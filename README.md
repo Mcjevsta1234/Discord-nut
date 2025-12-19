@@ -82,6 +82,10 @@ npm start
 
 ## Configuration
 
+### Prompt configuration
+
+Default prompts are Discord-aware and can be overridden per channel (system prompt, chat model, trigger names). See [docs/prompts.md](docs/prompts.md) for defaults, merge rules, and admin slash commands.
+
 ### Discord Bot Setup
 
 1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)
