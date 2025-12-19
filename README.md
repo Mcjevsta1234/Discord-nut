@@ -149,10 +149,32 @@ MCP (Model Context Protocol) provides a standardized way to give AI models acces
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| `get_time` | Get current date/time with Discord absolute timestamps | `format` (discord/iso/locale/unix), `timezone` (optional) |
+| `get_time` | Get current date/time with Discord timestamps | `format` (s/f/R/t/T/D/F or unix, default: s) |
 | `web_search` | Search the web via DuckDuckGo | `query` (required), `max_results` (1-10, default 5) |
+| `minecraft_status` | Check Minecraft Java server status | `server` (optional hostname, checks WitchyWorlds network by default) |
 
-**Note**: Web search uses DuckDuckGo HTML scraping and requires **no API keys**.
+**Note**: All tools use public APIs and require **no API keys**.
+
+#### Minecraft Server Status Tool
+
+The `minecraft_status` tool checks the status of Minecraft Java Edition servers using the mcstatus.io API.
+
+**Default Behavior:**
+When you ask questions like "how are the servers", "server status", or "are the servers up" without specifying a server, the bot checks these WitchyWorlds network servers:
+- `atm10.witchyworlds.top`
+- `sb4.witchyworlds.top`
+- `tts10.witchyworlds.top`
+- `valley.witchyworlds.top`
+
+**Check a Specific Server:**
+To check a specific server, mention it in your message:
+- "Check mc.hypixel.net status"
+- "Is play.example.com online?"
+
+**Output Includes:**
+- Server online/offline status
+- Player count (current/max)
+- Clear Discord-formatted output with inline code for server names
 
 ### Where MCP Tools Live
 
