@@ -1,4 +1,4 @@
-import { Message as DiscordMessage, Client, AttachmentBuilder, EmbedBuilder } from 'discord.js';
+import { Message as DiscordMessage, Client, AttachmentBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { OpenRouterService, Message } from '../ai/openRouterService';
 import { ImageService } from '../ai/imageService';
 import { MemoryManager } from '../ai/memoryManager';
@@ -6,6 +6,13 @@ import { PromptManager } from './promptManager';
 import { Planner } from '../ai/planner';
 import { ActionExecutor } from '../ai/actionExecutor';
 import { MCPToolResult } from '../mcp';
+
+interface MessageContext {
+  userContent: string;
+  personaId?: string;
+  channelId: string;
+  originalMessageId: string;
+}
 
 export class MessageHandler {
   private client: Client;
@@ -15,6 +22,7 @@ export class MessageHandler {
   private promptManager: PromptManager;
   private planner: Planner;
   private executor: ActionExecutor;
+  private messageContexts: Map<string, MessageContext>;
 
   constructor(
     client: Client,
@@ -29,6 +37,7 @@ export class MessageHandler {
     this.promptManager = promptManager;
     this.planner = new Planner(aiService);
     this.executor = new ActionExecutor(aiService);
+    this.messageContexts = new Map();
   }
 
   shouldRespond(message: DiscordMessage): boolean {
@@ -63,11 +72,6 @@ export class MessageHandler {
     }
 
     try {
-      // Show typing indicator
-      if ('sendTyping' in message.channel) {
-        await message.channel.sendTyping();
-      }
-
       // Get channel context
       const channelId = message.channelId;
 
@@ -161,6 +165,14 @@ export class MessageHandler {
       // Track which persona was used for this response
       if (sentMessage && personaId) {
         this.promptManager.trackMessagePersona(sentMessage.id, personaId);
+        
+        // Store context for redo functionality
+        this.messageContexts.set(sentMessage.id, {
+          userContent: message.content,
+          personaId,
+          channelId,
+          originalMessageId: message.id,
+        });
       }
 
       console.log(
@@ -313,15 +325,23 @@ export class MessageHandler {
         response = 'I processed your request.';
       }
 
+      // Create redo button
+      const redoButton = new ButtonBuilder()
+        .setCustomId('redo_response')
+        .setLabel('🔄 Regenerate')
+        .setStyle(ButtonStyle.Secondary);
+
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(redoButton);
+
       // Check if response should use an embed (for structured content)
       if (this.shouldUseEmbed(response)) {
         const embed = this.createEmbed(response);
         
         if (workingMessage) {
-          await workingMessage.edit({ content: null, embeds: [embed] });
+          await workingMessage.edit({ content: null, embeds: [embed], components: [row] });
           return workingMessage;
         } else {
-          return await message.reply({ embeds: [embed] });
+          return await message.reply({ embeds: [embed], components: [row] });
         }
       }
 
@@ -330,19 +350,19 @@ export class MessageHandler {
 
       if (response.length <= MAX_LENGTH) {
         if (workingMessage) {
-          await workingMessage.edit(response);
+          await workingMessage.edit({ content: response, components: [row] });
           return workingMessage;
         } else {
-          return await message.reply(response);
+          return await message.reply({ content: response, components: [row] });
         }
       }
 
-      // Split into chunks for long messages
+      // Split into chunks for long messages (only add button to first chunk)
       const chunks = this.splitMessage(response, MAX_LENGTH);
 
       // Edit working message with first chunk, send rest as follow-ups
       if (workingMessage) {
-        await workingMessage.edit(chunks[0]);
+        await workingMessage.edit({ content: chunks[0], components: [row] });
         for (let i = 1; i < chunks.length; i++) {
           if ('send' in message.channel) {
             await message.channel.send(chunks[i]);
@@ -350,7 +370,7 @@ export class MessageHandler {
         }
         return workingMessage;
       } else {
-        const firstMessage = await message.reply(chunks[0]);
+        const firstMessage = await message.reply({ content: chunks[0], components: [row] });
         for (let i = 1; i < chunks.length; i++) {
           if ('send' in message.channel) {
             await message.channel.send(chunks[i]);
@@ -451,5 +471,126 @@ export class MessageHandler {
     }
 
     return chunks;
+  }
+
+  async handleButtonInteraction(interaction: any): Promise<void> {
+    try {
+      if (interaction.customId === 'redo_response') {
+        // Get the stored context
+        const context = this.messageContexts.get(interaction.message.id);
+        
+        if (!context) {
+          await interaction.reply({
+            content: 'Sorry, I cannot regenerate this response (context expired).',
+            ephemeral: true,
+          });
+          return;
+        }
+
+        // Acknowledge the interaction
+        await interaction.deferUpdate();
+
+        // Update message to show regenerating
+        await interaction.message.edit({
+          content: '⏳ Regenerating response...',
+          embeds: [],
+          components: [],
+        });
+
+        // Get conversation context
+        const conversation = this.memoryManager.getConversationContext(context.channelId);
+        const composedPrompt = this.promptManager.composeChatPrompt(
+          context.channelId,
+          conversation,
+          context.personaId
+        );
+
+        // Rerun planner
+        const plan = await this.planner.planActionsWithRetry(
+          context.userContent,
+          composedPrompt.messages,
+          context.personaId
+        );
+
+        // Execute actions
+        const executionResult = await this.executor.executeActions(plan.actions);
+
+        // Handle image separately
+        if (executionResult.hasImage && executionResult.imageData) {
+          const { buffer, resolution, prompt } = executionResult.imageData;
+          
+          if (!this.imageService.isDiscordSafe(buffer.length)) {
+            await interaction.message.edit({
+              content: '⚠️ Generated image is too large for Discord.',
+              components: [],
+            });
+            return;
+          }
+
+          const attachment = new AttachmentBuilder(buffer, {
+            name: 'generated-image.png',
+          });
+
+          const caption = `🎨 **Regenerated Image**\n*${prompt}*\nResolution: ${resolution.width}×${resolution.height}`;
+
+          await interaction.message.edit({
+            content: caption,
+            files: [attachment],
+            components: [],
+          });
+          return;
+        }
+
+        // Generate final response
+        const finalResponse = await this.generateFinalResponse(
+          context.userContent,
+          executionResult,
+          composedPrompt.messages,
+          composedPrompt.model
+        );
+
+        // Create new redo button
+        const redoButton = new ButtonBuilder()
+          .setCustomId('redo_response')
+          .setLabel('🔄 Regenerate')
+          .setStyle(ButtonStyle.Secondary);
+
+        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(redoButton);
+
+        // Update message with new response
+        if (this.shouldUseEmbed(finalResponse)) {
+          const embed = this.createEmbed(finalResponse);
+          await interaction.message.edit({
+            content: null,
+            embeds: [embed],
+            components: [row],
+          });
+        } else {
+          await interaction.message.edit({
+            content: finalResponse,
+            embeds: [],
+            components: [row],
+          });
+        }
+
+        console.log(`Regenerated response for message ${interaction.message.id}`);
+      }
+    } catch (error) {
+      console.error('Error handling button interaction:', error);
+      try {
+        if (interaction.deferred || interaction.replied) {
+          await interaction.editReply({
+            content: 'Sorry, I encountered an error regenerating the response.',
+          });
+        } else {
+          await interaction.reply({
+            content: 'Sorry, I encountered an error regenerating the response.',
+            ephemeral: true,
+          });
+        }
+      } catch (e) {
+        console.error('Failed to send error message:', e);
+      }
+    }
   }
 }

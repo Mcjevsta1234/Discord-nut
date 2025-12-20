@@ -75,7 +75,14 @@ export class DiscordBot {
 
     this.client.on(Events.InteractionCreate, async (interaction) => {
       try {
-        await this.adminCommands.handleInteraction(interaction);
+        // Handle button interactions
+        if (interaction.isButton()) {
+          await this.messageHandler.handleButtonInteraction(interaction);
+        }
+        // Handle slash commands
+        else {
+          await this.adminCommands.handleInteraction(interaction);
+        }
       } catch (error) {
         console.error('Error handling interaction:', error);
       }
