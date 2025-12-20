@@ -5,7 +5,8 @@
 
 import { MCPClient } from './client';
 import { GetTimeTool } from './tools/getTime';
-import { WebSearchTool } from './tools/webSearch';
+import { SearxNGSearchTool } from './tools/searxngSearch';
+import { FetchUrlTool } from './tools/fetchUrl';
 import { MinecraftStatusTool } from './tools/minecraftStatus';
 import { GitHubInfoTool } from './tools/githubInfo';
 import { CalculatorTool } from './tools/calculator';
@@ -21,7 +22,8 @@ export function registerDefaultTools(mcpClient: MCPClient): void {
 
   // Register built-in tools
   registry.register(new GetTimeTool());
-  registry.register(new WebSearchTool());
+  registry.register(new SearxNGSearchTool()); // Deterministic web search
+  registry.register(new FetchUrlTool()); // URL content fetcher
   registry.register(new MinecraftStatusTool());
   registry.register(new GitHubInfoTool());
   registry.register(new CalculatorTool());
@@ -39,7 +41,8 @@ export * from './types';
 
 // Export individual tools for custom registration
 export { GetTimeTool } from './tools/getTime';
-export { WebSearchTool } from './tools/webSearch';
+export { SearxNGSearchTool } from './tools/searxngSearch';
+export { FetchUrlTool } from './tools/fetchUrl';
 export { MinecraftStatusTool } from './tools/minecraftStatus';
 export { GitHubInfoTool } from './tools/githubInfo';
 export { CalculatorTool } from './tools/calculator';

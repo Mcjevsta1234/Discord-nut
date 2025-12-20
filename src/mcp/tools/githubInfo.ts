@@ -259,23 +259,37 @@ export class GitHubInfoTool implements MCPTool {
 
   private async getReadme(repo: string): Promise<MCPToolResult> {
     try {
-      const content = await this.fetchFile(repo, 'README.md');
+      const [repoInfo, readme] = await Promise.allSettled([
+        this.fetchRepoInfo(repo),
+        this.fetchFile(repo, 'README.md'),
+      ]);
       
-      if (!content) {
+      if (readme.status === 'rejected' || !readme.value) {
         return {
           success: false,
           error: 'README.md not found',
         };
       }
 
-      // Truncate if too long for Discord
-      const truncated = content.length > 1800 
-        ? content.substring(0, 1800) + '\n\n...(truncated)'
-        : content;
+      const content = readme.value;
+
+      // Return structured data for better processing
+      const result: any = {
+        repo,
+        readme: content,
+      };
+
+      // Add basic repo info if available
+      if (repoInfo.status === 'fulfilled' && repoInfo.value) {
+        result.name = repoInfo.value.full_name;
+        result.description = repoInfo.value.description;
+        result.stars = repoInfo.value.stargazers_count;
+        result.language = repoInfo.value.language;
+      }
 
       return {
         success: true,
-        data: `**README.md**\n\n${truncated}`,
+        data: result,
       };
     } catch (error) {
       return {

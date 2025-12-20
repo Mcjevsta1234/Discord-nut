@@ -138,10 +138,13 @@ IMPORTANT Tool Detection Rules:
 - Math expressions (e.g., "14*3+9", "what's 5+5") → use "calculate" tool
 - Unit conversions (e.g., "6ft to cm", "convert 50kg to pounds") → use "convert_units" tool
 - Currency conversions (e.g., "£25 in USD", "$100 to EUR") → use "convert_currency" tool
-- GitHub queries (e.g., "summarize owner/repo", "what does this repo do", "list files") → use "github_repo" tool
+- GitHub queries (e.g., "summarize owner/repo", "what does this repo do") → use "github_repo" tool with action="readme"
 - Time queries → use "get_time" tool
-- Web searches → use "web_search" tool
+- Web searches ("search for", "find", "look up") → use "searxng_search" tool
+- URLs/links in message → use "fetch_url" tool
 - Minecraft server status → use "minecraft_status" tool
+
+Critical: GitHub repo summaries require action="readme" parameter
 
 Respond with ONLY a JSON object in this format:
 

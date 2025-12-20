@@ -50,11 +50,14 @@ IMPORTANT Detection Rules:
 - Math expressions → use "calculate" tool
 - Unit conversions → use "convert_units" tool
 - Currency conversions → use "convert_currency" tool
-- GitHub queries → use "github_repo" tool
+- GitHub queries ("summarize repo", "explain repo") → use "github_repo" tool with action="readme"
 - Time queries → use "get_time" tool
-- Web searches → use "web_search" tool
+- Web searches ("search for", "find", "look up") → use "searxng_search" tool
+- URLs/links pasted by user → use "fetch_url" tool
 - Image generation → use "image" type
 - Multiple requests → create multiple actions in order
+
+Critical: For GitHub repo summaries, ALWAYS use action="readme" to fetch README first
 
 Respond with ONLY a JSON object:
 
