@@ -137,9 +137,9 @@ export class MessageHandler {
 
       if (isComplex) {
         // PUBLIC PLAN/PROGRESS UX
-        // Build concise plan bullets (max 6)
-        const planBullets = this.buildPlanBullets(plan.actions).slice(0, 6);
-        const planSection = `**Plan**\n${planBullets.join('\n')}`;
+        // Use public plan from planner (already human-readable)
+        const publicSteps = plan.publicPlan || this.buildPlanBullets(plan.actions);
+        const planSection = `**🧠 Plan**\n${publicSteps.map(s => `• ${s}`).join('\n')}`;
 
         // Show plan
         await workingMessage.edit({
@@ -257,7 +257,8 @@ export class MessageHandler {
   }
 
   /**
-   * Build concise plan bullets from actions (public-friendly, no internal details)
+   * Build concise plan bullets from actions (FALLBACK - prefer planner's publicPlan)
+   * Public-friendly, no internal details
    */
   private buildPlanBullets(actions: any[]): string[] {
     const bullets: string[] = [];
@@ -270,20 +271,21 @@ export class MessageHandler {
         if (toolName === 'github_repo') {
           const subAction = action.toolParams?.action || 'access';
           const repo = action.toolParams?.repo || 'repository';
-          bullets.push(`• Check GitHub: ${repo} (${subAction})`);
+          const shortRepo = repo.length > 30 ? repo.substring(0, 30) + '...' : repo;
+          bullets.push(`Access GitHub: ${shortRepo} (${subAction})`);
         } else if (toolName === 'searxng_search') {
           const query = action.toolParams?.query || 'search';
-          bullets.push(`• Search web: "${query.substring(0, 40)}${query.length > 40 ? '...' : ''}"`);
+          bullets.push(`Search web: "${query.substring(0, 40)}${query.length > 40 ? '...' : ''}"`);
         } else if (toolName === 'fetch_url') {
           const url = action.toolParams?.url || 'URL';
-          bullets.push(`• Fetch content from ${url.substring(0, 40)}${url.length > 40 ? '...' : ''}`);
+          bullets.push(`Fetch content from ${url.substring(0, 40)}${url.length > 40 ? '...' : ''}`);
         } else {
-          bullets.push(`• Use ${toolName}`);
+          bullets.push(`Use ${toolName}`);
         }
       } else if (action.type === 'image') {
-        bullets.push(`• Generate image`);
+        bullets.push(`Generate image`);
       } else if (action.type === 'chat') {
-        bullets.push(`• Respond conversationally`);
+        bullets.push(`Respond conversationally`);
       }
     }
 
@@ -352,7 +354,7 @@ export class MessageHandler {
   }
 
   /**
-   * Send response with plan section kept at top
+   * Send response with plan section kept at top (MANDATORY FORMAT)
    */
   private async sendResponseWithPlan(
     message: DiscordMessage,
@@ -366,10 +368,11 @@ export class MessageHandler {
         response = 'Done!';
       }
 
-      // Create final embed with plan + response
+      // MANDATORY FORMAT: **🧠 Plan** followed by **💬 Response**
+      const responseHeader = '**Response**';
       const finalEmbed = new EmbedBuilder()
         .setColor(0x00ff00) // Green for success
-        .setDescription(`${planSection}\n\n**Response**\n${response.substring(0, 1800)}`)
+        .setDescription(`${planSection}\n\n${responseHeader}\n${response.substring(0, 1800)}`)
         .setTimestamp();
 
       // Create buttons
@@ -785,19 +788,15 @@ export class MessageHandler {
           context.personaId
         );
 
-        // Update: Executing
-        const actionsList = plan.actions
-          .map((a, i) => {
-            const icon = a.type === 'tool' ? '🔧' : a.type === 'image' ? '🎨' : '💬';
-            const name = a.toolName || a.type;
-            return `${i + 1}. ${icon} ${name}`;
-          })
-          .join('\n');
+        // Build public plan section
+        const publicSteps = plan.publicPlan || this.buildPlanBullets(plan.actions);
+        const planSection = `**🧠 Plan**\n${publicSteps.map(s => `• ${s}`).join('\n')}`;
 
+        // Update: Show plan + executing
         await interaction.message.edit({
           embeds: [
             workingEmbed.setDescription(
-              `⏳ **Regenerating...**\n✓ Planned ${plan.actions.length} action(s)\n\n${actionsList}\n\n⚙️ Executing...`
+              `${planSection}\n\n⚙️ **Executing actions...**`
             ),
           ],
         });
@@ -848,7 +847,7 @@ export class MessageHandler {
         // Update: Generating response
         await interaction.message.edit({
           embeds: [
-            workingEmbed.setDescription('⏳ **Regenerating...**\n✓ Actions completed\n\n💭 Generating response...'),
+            workingEmbed.setDescription(`${planSection}\n\n✅ **Actions complete**\n\n💭 **Writing response...**`),
           ],
         });
 
@@ -859,6 +858,13 @@ export class MessageHandler {
           composedPrompt.messages,
           composedPrompt.model
         );
+
+        // MANDATORY FORMAT: Use **🧠 Plan** / **💬 Response**
+        const responseHeader = '**💬 Response**';
+        const finalEmbed = new EmbedBuilder()
+          .setColor(0x00ff00)
+          .setDescription(`${planSection}\n\n${responseHeader}\n${finalResponse.substring(0, 1800)}`)
+          .setTimestamp();
 
         // Create buttons
         const redoButton = new ButtonBuilder()
@@ -874,20 +880,11 @@ export class MessageHandler {
         const row = new ActionRowBuilder<ButtonBuilder>().addComponents(redoButton, imageButton);
 
         // Update message with new response
-        if (this.shouldUseEmbed(finalResponse)) {
-          const embed = this.createEmbed(finalResponse);
-          await interaction.message.edit({
-            content: null,
-            embeds: [embed],
-            components: [row],
-          });
-        } else {
-          await interaction.message.edit({
-            content: finalResponse,
-            embeds: [],
-            components: [row],
-          });
-        }
+        await interaction.message.edit({
+          content: null,
+          embeds: [finalEmbed],
+          components: [row],
+        });
 
         console.log(`Regenerated response for message ${interaction.message.id}`);
       } else if (interaction.customId === 'generate_image') {
