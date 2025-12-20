@@ -67,7 +67,7 @@ export const config: Config = {
     apiKey: getEnvVar('OPENROUTER_API_KEY'),
     baseUrl: getEnvVar('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1'),
     models: {
-      router: getEnvVar('OPENROUTER_MODEL_ROUTER', 'mistralai/devstral-2512:free'),
+      router: getEnvVar('OPENROUTER_MODEL_ROUTER', 'meta-llama/llama-3.3-70b-instruct:free'),
       chat: getEnvVar('OPENROUTER_MODEL_CHAT', 'mistralai/devstral-2512:free'),
       summarizer: getEnvVar('OPENROUTER_MODEL_SUMMARIZER', 'mistralai/devstral-2512:free'),
       planner: getEnvVar('OPENROUTER_MODEL_PLANNER', 'qwen/qwen-2.5-7b-instruct:free'),
