@@ -145,11 +145,28 @@ export class PromptManager {
       messages.push(...config.bot.exampleMessages);
     }
 
-    if (conversation.summary) {
-      messages.push({
-        role: 'system',
-        content: `Previous conversation summary: ${conversation.summary}`,
-      });
+    // Add memory summary if exists
+    if (conversation.summaryData) {
+      const summaryParts: string[] = [];
+      
+      if (conversation.summaryData.summary) {
+        summaryParts.push(`Summary: ${conversation.summaryData.summary}`);
+      }
+      
+      if (conversation.summaryData.facts.length > 0) {
+        summaryParts.push(`Key facts:\n${conversation.summaryData.facts.map(f => `- ${f}`).join('\n')}`);
+      }
+      
+      if (conversation.summaryData.preferences.length > 0) {
+        summaryParts.push(`User preferences:\n${conversation.summaryData.preferences.map(p => `- ${p}`).join('\n')}`);
+      }
+      
+      if (summaryParts.length > 0) {
+        messages.push({
+          role: 'system',
+          content: `Previous conversation context:\n${summaryParts.join('\n\n')}`,
+        });
+      }
     }
 
     messages.push(...conversation.recentMessages);

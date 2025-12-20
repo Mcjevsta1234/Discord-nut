@@ -1,14 +1,23 @@
 import { Message, OpenRouterService } from './openRouterService';
 import { config } from '../config';
 
+export interface MemorySummary {
+  summary: string;
+  facts: string[];
+  preferences: string[];
+  lastUpdated: number;
+}
+
 export interface ConversationMemory {
-  summary?: string;
+  summaryData?: MemorySummary;
   recentMessages: Message[];
 }
 
 export class MemoryManager {
   private memories: Map<string, ConversationMemory>;
   private aiService: OpenRouterService;
+  private readonly MAX_RECENT_MESSAGES = 10;
+  private readonly SUMMARIZATION_THRESHOLD = 12;
 
   constructor(aiService: OpenRouterService) {
     this.memories = new Map();
@@ -28,50 +37,167 @@ export class MemoryManager {
     const memory = this.getMemory(channelId);
     memory.recentMessages.push(message);
 
-    // If we have too many messages, summarize older ones
+    // Trigger summarization when threshold is reached
     if (
       config.bot.enableSummary &&
-      memory.recentMessages.length > config.bot.maxMemoryMessages * 2
+      memory.recentMessages.length >= this.SUMMARIZATION_THRESHOLD
     ) {
-      await this.summarizeOldMessages(channelId);
-    } else if (memory.recentMessages.length > config.bot.maxMemoryMessages * 3) {
-      // Hard limit: trim oldest messages if summary is disabled or fails
+      await this.summarizeAndTrim(channelId);
+    } else if (memory.recentMessages.length > this.MAX_RECENT_MESSAGES * 3) {
+      // Hard limit: trim oldest messages if summary is disabled
+      memory.recentMessages = memory.recentMessages.slice(-this.MAX_RECENT_MESSAGES);
+    }
+  }
+
+  private async summarizeAndTrim(channelId: string): Promise<void> {
+    const memory = this.getMemory(channelId);
+    const messagesToSummarize = memory.recentMessages.slice(
+      0,
+      -this.MAX_RECENT_MESSAGES
+    );
+
+    if (messagesToSummarize.length === 0) return;
+
+    try {
+      const summaryPrompt: Message[] = [
+        {
+          role: 'system',
+          content: `Summarize this conversation into concise facts and preferences. Ignore jokes, banter, and tool errors. Focus on: decisions made, ongoing tasks, user preferences, important context.
+
+Output format:
+SUMMARY: One sentence overview
+FACTS: Bullet list of key information
+PREFERENCES: User preferences discovered
+
+Be extremely concise. Skip irrelevant chatter.`,
+        },
+        ...messagesToSummarize,
+        {
+          role: 'user',
+          content: 'Summarize the above conversation.',
+        },
+      ];
+
+      const summaryText = await this.aiService.chatCompletion(
+        summaryPrompt,
+        config.openRouter.models.summarizer
+      );
+
+      // Parse summary into structured format
+      const summary = this.parseSummary(summaryText);
+      
+      // Merge with existing summary if present
+      if (memory.summaryData) {
+        summary.facts = [...memory.summaryData.facts, ...summary.facts].slice(-10);
+        summary.preferences = [
+          ...memory.summaryData.preferences,
+          ...summary.preferences,
+        ].slice(-5);
+      }
+
+      memory.summaryData = {
+        ...summary,
+        lastUpdated: Date.now(),
+      };
+
+      // Keep only recent messages
+      memory.recentMessages = memory.recentMessages.slice(-this.MAX_RECENT_MESSAGES);
+
+      console.log(
+        `✓ Summarized ${messagesToSummarize.length} messages for channel ${channelId}`
+      );
+    } catch (error) {
+      console.error('Failed to summarize messages:', error);
+      // Keep messages if summarization fails, but enforce hard limit
       memory.recentMessages = memory.recentMessages.slice(
-        -config.bot.maxMemoryMessages * 2
+        -this.MAX_RECENT_MESSAGES * 2
       );
     }
   }
 
-  private async summarizeOldMessages(channelId: string): Promise<void> {
-    const memory = this.getMemory(channelId);
-    const messagesToSummarize = memory.recentMessages.slice(
-      0,
-      config.bot.maxMemoryMessages
-    );
+  private parseSummary(text: string): Omit<MemorySummary, 'lastUpdated'> {
+    const summary: Omit<MemorySummary, 'lastUpdated'> = {
+      summary: '',
+      facts: [],
+      preferences: [],
+    };
 
-    try {
-      const summary = await this.aiService.summarizeConversation(
-        messagesToSummarize
-      );
-      memory.summary = summary;
-      memory.recentMessages = memory.recentMessages.slice(
-        config.bot.maxMemoryMessages
-      );
-      console.log(`Summarized ${messagesToSummarize.length} messages for channel ${channelId}`);
-    } catch (error) {
-      console.error('Failed to summarize messages:', error);
-      // Keep messages if summarization fails
+    // Extract summary line
+    const summaryMatch = text.match(/SUMMARY:?\s*(.+?)(?:\n|$)/i);
+    if (summaryMatch) {
+      summary.summary = summaryMatch[1].trim();
     }
+
+    // Extract facts
+    const factsMatch = text.match(/FACTS:?\s*([\s\S]*?)(?:PREFERENCES|$)/i);
+    if (factsMatch) {
+      summary.facts = factsMatch[1]
+        .split('\n')
+        .map((line) => line.replace(/^[-*•]\s*/, '').trim())
+        .filter((line) => line.length > 0 && line.length < 200);
+    }
+
+    // Extract preferences
+    const preferencesMatch = text.match(/PREFERENCES:?\s*([\s\S]*?)$/i);
+    if (preferencesMatch) {
+      summary.preferences = preferencesMatch[1]
+        .split('\n')
+        .map((line) => line.replace(/^[-*•]\s*/, '').trim())
+        .filter((line) => line.length > 0 && line.length < 200);
+    }
+
+    return summary;
   }
 
   getConversationContext(channelId: string): ConversationMemory {
     const memory = this.getMemory(channelId);
-    const recentCount = config.bot.maxMemoryMessages;
 
     return {
-      summary: memory.summary,
-      recentMessages: memory.recentMessages.slice(-recentCount),
+      summaryData: memory.summaryData,
+      recentMessages: memory.recentMessages.slice(-this.MAX_RECENT_MESSAGES),
     };
+  }
+
+  /**
+   * Build context for AI with summary prepended if exists
+   */
+  buildContextWithSummary(channelId: string): Message[] {
+    const memory = this.getConversationContext(channelId);
+    const messages: Message[] = [];
+
+    // Include summary as system context if exists
+    if (memory.summaryData) {
+      const summaryText = this.formatSummaryForContext(memory.summaryData);
+      messages.push({
+        role: 'system',
+        content: `Previous conversation context:\n${summaryText}`,
+      });
+    }
+
+    // Add recent messages
+    messages.push(...memory.recentMessages);
+
+    return messages;
+  }
+
+  private formatSummaryForContext(summary: MemorySummary): string {
+    const parts: string[] = [];
+
+    if (summary.summary) {
+      parts.push(`Summary: ${summary.summary}`);
+    }
+
+    if (summary.facts.length > 0) {
+      parts.push(`Facts:\n${summary.facts.map((f) => `- ${f}`).join('\n')}`);
+    }
+
+    if (summary.preferences.length > 0) {
+      parts.push(
+        `Preferences:\n${summary.preferences.map((p) => `- ${p}`).join('\n')}`
+      );
+    }
+
+    return parts.join('\n\n');
   }
 
   clearMemory(channelId: string): void {
@@ -82,11 +208,15 @@ export class MemoryManager {
   getMemoryStats(channelId: string): {
     messageCount: number;
     hasSummary: boolean;
+    factCount: number;
+    preferenceCount: number;
   } {
     const memory = this.getMemory(channelId);
     return {
       messageCount: memory.recentMessages.length,
-      hasSummary: !!memory.summary,
+      hasSummary: !!memory.summaryData,
+      factCount: memory.summaryData?.facts.length || 0,
+      preferenceCount: memory.summaryData?.preferences.length || 0,
     };
   }
 }

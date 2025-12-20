@@ -1,4 +1,4 @@
-import { Message as DiscordMessage, Client, AttachmentBuilder } from 'discord.js';
+import { Message as DiscordMessage, Client, AttachmentBuilder, EmbedBuilder } from 'discord.js';
 import { OpenRouterService, Message } from '../ai/openRouterService';
 import { ImageService } from '../ai/imageService';
 import { MemoryManager } from '../ai/memoryManager';
@@ -118,11 +118,23 @@ export class MessageHandler {
 
       console.log(`Action plan: ${plan.actions.map(a => a.type).join(' → ')}`);
 
+      // Show working message for multi-step or tool actions
+      let workingMessage: DiscordMessage | null = null;
+      const hasToolActions = plan.actions.some(a => a.type === 'tool' || a.type === 'image');
+      
+      if (hasToolActions && plan.actions.length > 0) {
+        workingMessage = await message.reply('⏳ Working on it...');
+      }
+
       // EXECUTOR STEP: Execute actions sequentially
       const executionResult = await this.executor.executeActions(plan.actions);
 
       // Handle image response separately if generated
       if (executionResult.hasImage && executionResult.imageData) {
+        // Delete working message
+        if (workingMessage) {
+          await workingMessage.delete().catch(() => {});
+        }
         await this.sendImageResponse(message, executionResult, personaId);
         return;
       }
@@ -135,14 +147,16 @@ export class MessageHandler {
         composedPrompt.model
       );
 
-      // Add assistant response to memory
-      await this.memoryManager.addMessage(channelId, {
-        role: 'assistant',
-        content: finalResponse,
-      });
+      // Add assistant response to memory (but not tool errors)
+      if (finalResponse && !finalResponse.includes('encountered an error')) {
+        await this.memoryManager.addMessage(channelId, {
+          role: 'assistant',
+          content: finalResponse,
+        });
+      }
 
-      // Send response
-      const sentMessage = await this.sendResponse(message, finalResponse);
+      // Send response (replace working message if exists)
+      const sentMessage = await this.sendResponse(message, finalResponse, workingMessage);
 
       // Track which persona was used for this response
       if (sentMessage && personaId) {
@@ -289,7 +303,8 @@ export class MessageHandler {
 
   private async sendResponse(
     message: DiscordMessage,
-    response: string
+    response: string,
+    workingMessage?: DiscordMessage | null
   ): Promise<DiscordMessage | null> {
     try {
       // Validate response
@@ -298,73 +313,143 @@ export class MessageHandler {
         response = 'I processed your request.';
       }
 
+      // Check if response should use an embed (for structured content)
+      if (this.shouldUseEmbed(response)) {
+        const embed = this.createEmbed(response);
+        
+        if (workingMessage) {
+          await workingMessage.edit({ content: null, embeds: [embed] });
+          return workingMessage;
+        } else {
+          return await message.reply({ embeds: [embed] });
+        }
+      }
+
       // Discord message limit is 2000 characters
-      const MAX_LENGTH = 2000;
+      const MAX_LENGTH = 1800; // Lower to leave room for formatting
 
       if (response.length <= MAX_LENGTH) {
-        const sentMessage = await message.reply(response);
-        return sentMessage;
-      }
-
-      // Split into chunks
-      const chunks: string[] = [];
-      let currentChunk = '';
-
-      const lines = response.split('\n');
-      for (const line of lines) {
-        if ((currentChunk + line + '\n').length > MAX_LENGTH) {
-          if (currentChunk) {
-            chunks.push(currentChunk.trim());
-            currentChunk = '';
-          }
-
-          // If a single line is too long, split it by words
-          if (line.length > MAX_LENGTH) {
-            const words = line.split(' ');
-            for (const word of words) {
-              if ((currentChunk + word + ' ').length > MAX_LENGTH) {
-                chunks.push(currentChunk.trim());
-                currentChunk = word + ' ';
-              } else {
-                currentChunk += word + ' ';
-              }
-            }
-          } else {
-            currentChunk = line + '\n';
-          }
+        if (workingMessage) {
+          await workingMessage.edit(response);
+          return workingMessage;
         } else {
-          currentChunk += line + '\n';
+          return await message.reply(response);
         }
       }
 
-      if (currentChunk.trim()) {
-        chunks.push(currentChunk.trim());
-      }
+      // Split into chunks for long messages
+      const chunks = this.splitMessage(response, MAX_LENGTH);
 
-      // Ensure we have at least one chunk
-      if (chunks.length === 0) {
-        chunks.push('Response was empty.');
-      }
-
-      // Send first chunk as reply, rest as follow-ups
-      const firstMessage = await message.reply(chunks[0]);
-      for (let i = 1; i < chunks.length; i++) {
-        if ('send' in message.channel) {
-          await message.channel.send(chunks[i]);
+      // Edit working message with first chunk, send rest as follow-ups
+      if (workingMessage) {
+        await workingMessage.edit(chunks[0]);
+        for (let i = 1; i < chunks.length; i++) {
+          if ('send' in message.channel) {
+            await message.channel.send(chunks[i]);
+          }
         }
+        return workingMessage;
+      } else {
+        const firstMessage = await message.reply(chunks[0]);
+        for (let i = 1; i < chunks.length; i++) {
+          if ('send' in message.channel) {
+            await message.channel.send(chunks[i]);
+          }
+        }
+        return firstMessage;
       }
-
-      // Return the first message for persona tracking
-      return firstMessage;
     } catch (error) {
       console.error('Error sending response:', error);
-      // Attempt to send a simple error message
       try {
-        await message.reply('I encountered an error sending my response.');
+        if (workingMessage) {
+          await workingMessage.edit('I encountered an error sending my response.');
+          return workingMessage;
+        } else {
+          await message.reply('I encountered an error sending my response.');
+        }
       } catch (fallbackError) {
         console.error('Failed to send fallback error message:', fallbackError);
       }
       return null;
     }
+  }
+
+  private shouldUseEmbed(response: string): boolean {
+    // Use embeds for structured content
+    return (
+      response.includes('```') ||
+      response.includes('**GitHub Repository') ||
+      response.includes('**Repository Structure') ||
+      response.includes('**Recent Commits') ||
+      response.includes('**Results:**') ||
+      (response.split('\n').length > 10 && response.includes('•'))
+    );
+  }
+
+  private createEmbed(content: string): EmbedBuilder {
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2) // Discord blurple
+      .setTimestamp();
+
+    // Extract title if present
+    const titleMatch = content.match(/^\*\*(.+?)\*\*/);
+    if (titleMatch) {
+      embed.setTitle(titleMatch[1]);
+      content = content.replace(titleMatch[0], '').trim();
+    }
+
+    // Truncate description if too long (Discord limit: 4096)
+    if (content.length > 4000) {
+      content = content.substring(0, 3990) + '\n\n...(truncated)';
+    }
+
+    embed.setDescription(content);
+
+    return embed;
+  }
+
+  private splitMessage(text: string, maxLength: number): string[] {
+    const chunks: string[] = [];
+    let currentChunk = '';
+
+    const lines = text.split('\n');
+    for (const line of lines) {
+      if ((currentChunk + line + '\n').length > maxLength) {
+        if (currentChunk) {
+          chunks.push(currentChunk.trim());
+          currentChunk = '';
+        }
+
+        // If a single line is too long, split it by words
+        if (line.length > maxLength) {
+          const words = line.split(' ');
+          for (const word of words) {
+            if ((currentChunk + word + ' ').length > maxLength) {
+              if (currentChunk) {
+                chunks.push(currentChunk.trim());
+              }
+              currentChunk = word + ' ';
+            } else {
+              currentChunk += word + ' ';
+            }
+          }
+        } else {
+          currentChunk = line + '\n';
+        }
+      } else {
+        currentChunk += line + '\n';
+      }
+    }
+
+    if (currentChunk.trim()) {
+      chunks.push(currentChunk.trim());
+    }
+
+    // Ensure we have at least one chunk
+    if (chunks.length === 0) {
+      chunks.push('Response was empty.');
+    }
+
+    return chunks;
   }
 }
