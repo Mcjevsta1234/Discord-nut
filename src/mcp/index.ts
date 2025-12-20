@@ -8,7 +8,7 @@ import { GetTimeTool } from './tools/getTime';
 import { SearxNGSearchTool } from './tools/searxngSearch';
 import { FetchUrlTool } from './tools/fetchUrl';
 import { MinecraftStatusTool } from './tools/minecraftStatus';
-import { GitHubInfoTool } from './tools/githubInfo';
+import { GitHubRepoTool } from './tools/githubRepo';
 import { CalculatorTool } from './tools/calculator';
 import { UnitConverterTool } from './tools/unitConverter';
 import { CurrencyConverterTool } from './tools/currencyConverter';
@@ -25,7 +25,7 @@ export function registerDefaultTools(mcpClient: MCPClient): void {
   registry.register(new SearxNGSearchTool()); // Deterministic web search
   registry.register(new FetchUrlTool()); // URL content fetcher
   registry.register(new MinecraftStatusTool());
-  registry.register(new GitHubInfoTool());
+  registry.register(new GitHubRepoTool()); // Deterministic GitHub REST API
   registry.register(new CalculatorTool());
   registry.register(new UnitConverterTool());
   registry.register(new CurrencyConverterTool());
@@ -44,8 +44,9 @@ export { GetTimeTool } from './tools/getTime';
 export { SearxNGSearchTool } from './tools/searxngSearch';
 export { FetchUrlTool } from './tools/fetchUrl';
 export { MinecraftStatusTool } from './tools/minecraftStatus';
-export { GitHubInfoTool } from './tools/githubInfo';
+export { GitHubRepoTool } from './tools/githubRepo';
 export { CalculatorTool } from './tools/calculator';
 export { UnitConverterTool } from './tools/unitConverter';
 export { CurrencyConverterTool } from './tools/currencyConverter';
 export { InfoUtilsTool } from './tools/infoUtils';
+

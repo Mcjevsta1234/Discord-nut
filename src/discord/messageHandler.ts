@@ -116,20 +116,12 @@ export class MessageHandler {
       // Send working message immediately
       const workingEmbed = new EmbedBuilder()
         .setColor(0xffa500) // Orange for working
-        .setDescription('⏳ **Processing your request...**')
+        .setDescription('⏳ **Working on it...**')
         .setTimestamp();
 
       const workingMessage = await message.reply({ embeds: [workingEmbed] });
 
       // PLANNER STEP: Decide what actions to take
-      await workingMessage.edit({
-        embeds: [
-          workingEmbed.setDescription(
-            '⏳ **Processing your request...**\n🧠 Planning actions...'
-          ),
-        ],
-      });
-
       const plan = await this.planner.planActionsWithRetry(
         message.content,
         composedPrompt.messages,
@@ -138,71 +130,117 @@ export class MessageHandler {
 
       console.log(`Action plan: ${plan.actions.map(a => a.type).join(' → ')}`);
 
-      // Update with planned actions
-      const actionsList = plan.actions
-        .map((a, i) => {
-          const icon = a.type === 'tool' ? '🔧' : a.type === 'image' ? '🎨' : '💬';
-          const name = a.toolName || a.type;
-          return `${i + 1}. ${icon} ${name}`;
-        })
-        .join('\n');
+      // Determine if we should show Plan/Progress UX
+      const hasTools = plan.actions.some((a) => a.type === 'tool');
+      const hasMultipleActions = plan.actions.length > 1;
+      const isComplex = hasTools || hasMultipleActions;
 
-      await workingMessage.edit({
-        embeds: [
-          workingEmbed.setDescription(
-            `⏳ **Processing your request...**\n✓ Planned ${plan.actions.length} action(s)\n\n${actionsList}\n\n⚙️ Executing...`
-          ),
-        ],
-      });
+      if (isComplex) {
+        // PUBLIC PLAN/PROGRESS UX
+        // Build concise plan bullets (max 6)
+        const planBullets = this.buildPlanBullets(plan.actions).slice(0, 6);
+        const planSection = `**Plan**\n${planBullets.join('\n')}`;
 
-      // EXECUTOR STEP: Execute actions sequentially
-      const executionResult = await this.executor.executeActions(plan.actions);
-
-      // Handle image response separately if generated
-      if (executionResult.hasImage && executionResult.imageData) {
-        await this.sendImageResponse(message, executionResult, personaId, workingMessage);
-        return;
-      }
-
-      // Update: Generating response
-      await workingMessage.edit({
-        embeds: [
-          workingEmbed.setDescription(
-            `⏳ **Processing your request...**\n✓ Actions completed\n\n💭 Generating response...`
-          ),
-        ],
-      });
-
-      // RESPONDER STEP: Generate final response using persona model
-      const finalResponse = await this.generateFinalResponse(
-        message.content,
-        executionResult,
-        composedPrompt.messages,
-        composedPrompt.model
-      );
-
-      // Add assistant response to memory (but not tool errors)
-      if (finalResponse && !finalResponse.includes('encountered an error')) {
-        await this.memoryManager.addMessage(channelId, {
-          role: 'assistant',
-          content: finalResponse,
+        // Show plan
+        await workingMessage.edit({
+          embeds: [
+            workingEmbed.setDescription(
+              `${planSection}\n\n⚙️ **Executing actions...**`
+            ),
+          ],
         });
-      }
 
-      // Send response (replace working message if exists)
-      const sentMessage = await this.sendResponse(message, finalResponse, workingMessage);
+        // Execute with progress updates
+        const executionResult = await this.executeWithProgress(
+          plan.actions,
+          workingMessage,
+          workingEmbed,
+          planSection
+        );
 
-      // Track which persona was used for this response
-      if (sentMessage && personaId) {
-        this.promptManager.trackMessagePersona(sentMessage.id, personaId);
-        
-        // Store context for redo functionality
-        this.messageContexts.set(sentMessage.id, {
-          userContent: message.content,
-          personaId,
-          channelId,
-          originalMessageId: message.id,
+        // Handle image response separately if generated
+        if (executionResult.hasImage && executionResult.imageData) {
+          await this.sendImageResponse(message, executionResult, personaId, workingMessage);
+          return;
+        }
+
+        // Update: Generating response
+        await workingMessage.edit({
+          embeds: [
+            workingEmbed.setDescription(
+              `${planSection}\n\n✅ **Actions complete**\n\n💭 **Writing response...**`
+            ),
+          ],
         });
+
+        // RESPONDER STEP: Generate final response
+        const finalResponse = await this.generateFinalResponse(
+          message.content,
+          executionResult,
+          composedPrompt.messages,
+          composedPrompt.model
+        );
+
+        // Add assistant response to memory (but not tool errors)
+        if (finalResponse && !finalResponse.includes('encountered an error')) {
+          await this.memoryManager.addMessage(channelId, {
+            role: 'assistant',
+            content: finalResponse,
+          });
+        }
+
+        // Send response with plan kept at top
+        const sentMessage = await this.sendResponseWithPlan(
+          message,
+          finalResponse,
+          planSection,
+          workingMessage
+        );
+
+        // Track context
+        if (sentMessage && personaId) {
+          this.promptManager.trackMessagePersona(sentMessage.id, personaId);
+          this.messageContexts.set(sentMessage.id, {
+            userContent: message.content,
+            personaId,
+            channelId,
+            originalMessageId: message.id,
+          });
+        }
+      } else {
+        // Simple response - no plan/progress needed
+        const executionResult = await this.executor.executeActions(plan.actions);
+
+        if (executionResult.hasImage && executionResult.imageData) {
+          await this.sendImageResponse(message, executionResult, personaId, workingMessage);
+          return;
+        }
+
+        const finalResponse = await this.generateFinalResponse(
+          message.content,
+          executionResult,
+          composedPrompt.messages,
+          composedPrompt.model
+        );
+
+        if (finalResponse && !finalResponse.includes('encountered an error')) {
+          await this.memoryManager.addMessage(channelId, {
+            role: 'assistant',
+            content: finalResponse,
+          });
+        }
+
+        const sentMessage = await this.sendResponse(message, finalResponse, workingMessage);
+
+        if (sentMessage && personaId) {
+          this.promptManager.trackMessagePersona(sentMessage.id, personaId);
+          this.messageContexts.set(sentMessage.id, {
+            userContent: message.content,
+            personaId,
+            channelId,
+            originalMessageId: message.id,
+          });
+        }
       }
 
       console.log(
@@ -215,6 +253,154 @@ export class MessageHandler {
       await message.reply(
         'Sorry, I encountered an error processing your message. Please try again later.'
       );
+    }
+  }
+
+  /**
+   * Build concise plan bullets from actions (public-friendly, no internal details)
+   */
+  private buildPlanBullets(actions: any[]): string[] {
+    const bullets: string[] = [];
+
+    for (const action of actions) {
+      if (action.type === 'tool') {
+        const toolName = action.toolName || 'unknown tool';
+        
+        // User-friendly tool descriptions
+        if (toolName === 'github_repo') {
+          const subAction = action.toolParams?.action || 'access';
+          const repo = action.toolParams?.repo || 'repository';
+          bullets.push(`• Check GitHub: ${repo} (${subAction})`);
+        } else if (toolName === 'searxng_search') {
+          const query = action.toolParams?.query || 'search';
+          bullets.push(`• Search web: "${query.substring(0, 40)}${query.length > 40 ? '...' : ''}"`);
+        } else if (toolName === 'fetch_url') {
+          const url = action.toolParams?.url || 'URL';
+          bullets.push(`• Fetch content from ${url.substring(0, 40)}${url.length > 40 ? '...' : ''}`);
+        } else {
+          bullets.push(`• Use ${toolName}`);
+        }
+      } else if (action.type === 'image') {
+        bullets.push(`• Generate image`);
+      } else if (action.type === 'chat') {
+        bullets.push(`• Respond conversationally`);
+      }
+    }
+
+    return bullets;
+  }
+
+  /**
+   * Execute actions with live progress updates
+   */
+  private async executeWithProgress(
+    actions: any[],
+    workingMessage: DiscordMessage,
+    workingEmbed: EmbedBuilder,
+    planSection: string
+  ): Promise<any> {
+    const results: any[] = [];
+    let hasImage = false;
+    let imageData: any = null;
+
+    for (let i = 0; i < actions.length; i++) {
+      const action = actions[i];
+      const actionNum = i + 1;
+      const total = actions.length;
+
+      // Show current progress
+      const progressIcon = action.type === 'tool' ? '🔎' : action.type === 'image' ? '🎨' : '💬';
+      const actionDesc = action.toolName || action.type;
+
+      await workingMessage.edit({
+        embeds: [
+          workingEmbed.setDescription(
+            `${planSection}\n\n${progressIcon} **Executing ${actionNum}/${total}:** ${actionDesc}...`
+          ),
+        ],
+      }).catch(() => {}); // Ignore edit errors if message deleted
+
+      // Execute action
+      const result = await this.executor.executeAction(action);
+      results.push(result);
+
+      if (result.imageBuffer) {
+        hasImage = true;
+        imageData = {
+          buffer: result.imageBuffer,
+          resolution: result.resolution,
+          prompt: result.prompt,
+        };
+      }
+
+      // Show completion
+      await workingMessage.edit({
+        embeds: [
+          workingEmbed.setDescription(
+            `${planSection}\n\n✅ **Completed ${actionNum}/${total}:** ${actionDesc}`
+          ),
+        ],
+      }).catch(() => {});
+
+      // Brief delay for visibility
+      if (i < actions.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+
+    return { results, hasImage, imageData };
+  }
+
+  /**
+   * Send response with plan section kept at top
+   */
+  private async sendResponseWithPlan(
+    message: DiscordMessage,
+    response: string,
+    planSection: string,
+    workingMessage?: DiscordMessage
+  ): Promise<DiscordMessage | null> {
+    try {
+      // Validate response
+      if (!response || response.trim().length === 0) {
+        response = 'Done!';
+      }
+
+      // Create final embed with plan + response
+      const finalEmbed = new EmbedBuilder()
+        .setColor(0x00ff00) // Green for success
+        .setDescription(`${planSection}\n\n**Response**\n${response.substring(0, 1800)}`)
+        .setTimestamp();
+
+      // Create buttons
+      const redoButton = new ButtonBuilder()
+        .setCustomId('redo_response')
+        .setLabel('🔄 Regenerate')
+        .setStyle(ButtonStyle.Secondary);
+
+      const imageButton = new ButtonBuilder()
+        .setCustomId('generate_image')
+        .setLabel('🎨 Generate Image')
+        .setStyle(ButtonStyle.Primary);
+
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(redoButton, imageButton);
+
+      if (workingMessage) {
+        await workingMessage.edit({
+          content: null,
+          embeds: [finalEmbed],
+          components: [row],
+        });
+        return workingMessage;
+      } else {
+        return await message.reply({
+          embeds: [finalEmbed],
+          components: [row],
+        });
+      }
+    } catch (error) {
+      console.error('Error sending response with plan:', error);
+      return null;
     }
   }
 

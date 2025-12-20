@@ -13,7 +13,8 @@ export interface ActionResult {
   content: string;
   data?: any;
   imageBuffer?: Buffer;
-  imageResolution?: { width: number; height: number };
+  resolution?: { width: number; height: number };
+  prompt?: string;
   error?: string;
 }
 
@@ -45,39 +46,52 @@ export class ActionExecutor {
       const action = actions[i];
       console.log(`Executing action ${i + 1}/${actions.length}: ${action.type}${action.toolName ? ` (${action.toolName})` : ''}`);
 
-      try {
-        if (action.type === 'tool' && action.toolName) {
-          const result = await this.executeTool(action);
-          results.push(result);
-        } else if (action.type === 'image') {
-          const result = await this.executeImageGeneration(action);
-          results.push(result);
-          if (result.success && result.imageBuffer) {
-            hasImage = true;
-            imageData = {
-              buffer: result.imageBuffer,
-              resolution: result.imageResolution!,
-              prompt: action.imagePrompt || 'Generated image',
-            };
-          }
-        } else if (action.type === 'chat') {
-          // Chat action is handled by final response generation
-          results.push({
-            success: true,
-            content: 'Chat response will be generated',
-          });
-        }
-      } catch (error) {
-        console.error(`Error executing action ${i + 1}:`, error);
-        results.push({
-          success: false,
-          content: '',
-          error: error instanceof Error ? error.message : 'Unknown error',
-        });
+      const result = await this.executeAction(action);
+      results.push(result);
+
+      if (result.success && result.imageBuffer) {
+        hasImage = true;
+        imageData = {
+          buffer: result.imageBuffer,
+          resolution: result.resolution!,
+          prompt: result.prompt || action.imagePrompt || 'Generated image',
+        };
       }
     }
 
     return { results, hasImage, imageData };
+  }
+
+  /**
+   * Execute a single action
+   */
+  async executeAction(action: PlannedAction): Promise<ActionResult> {
+    try {
+      if (action.type === 'tool' && action.toolName) {
+        return await this.executeTool(action);
+      } else if (action.type === 'image') {
+        return await this.executeImageGeneration(action);
+      } else if (action.type === 'chat') {
+        // Chat action is handled by final response generation
+        return {
+          success: true,
+          content: 'Chat response will be generated',
+        };
+      }
+
+      return {
+        success: false,
+        content: '',
+        error: `Unknown action type: ${action.type}`,
+      };
+    } catch (error) {
+      console.error('Error executing action:', error);
+      return {
+        success: false,
+        content: '',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
   }
 
   private async executeTool(action: PlannedAction): Promise<ActionResult> {
@@ -145,7 +159,8 @@ export class ActionExecutor {
         success: true,
         content: `Generated image: ${result.resolution.width}×${result.resolution.height}`,
         imageBuffer: result.imageBuffer,
-        imageResolution: result.resolution,
+        resolution: result.resolution,
+        prompt: action.imagePrompt,
       };
     } catch (error) {
       return {
