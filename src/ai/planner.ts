@@ -41,82 +41,81 @@ export class Planner {
       const planningPrompt: Message[] = [
         {
           role: 'system',
-          content: `You are an action planner. Analyze the user's request and create a plan of actions to fulfill it.
+          content: `OUTPUT JSON ONLY. No prose, no markdown, no explanation.
 
 Available tools:
 ${toolList}
 
-IMPORTANT Detection Rules:
-- Math expressions → use "calculate" tool
-- Unit conversions → use "convert_units" tool
-- Currency conversions → use "convert_currency" tool
-- GitHub queries ("summarize repo", "explain repo") → use "github_repo" tool with action="readme"
-- Time queries → use "get_time" tool
-- Web searches ("search for", "find", "look up") → use "searxng_search" tool
-- URLs/links pasted by user → use "fetch_url" tool
-- Image generation → use "image" type
-- Multiple requests → create multiple actions in order
+Detection rules:
+- Math → "calculate"
+- Unit conversion → "convert_units"
+- Currency → "convert_currency"
+- GitHub repo → "github_repo" with action="readme"
+- Time → "get_time"
+- Web search → "searxng_search"
+- URLs → "fetch_url"
+- Image request → "image" type
+- General chat → "chat" type
 
-Critical: For GitHub repo summaries, ALWAYS use action="readme" to fetch README first
-
-Respond with ONLY a JSON object:
-
+SCHEMA (REQUIRED):
 {
   "actions": [
-    {
-      "type": "tool",
-      "toolName": "tool_name",
-      "toolParams": {"param": "value"},
-      "reasoning": "why this action"
-    }
-  ],
-  "reasoning": "overall plan explanation"
+    {"type": "tool", "toolName": "name", "toolParams": {}},
+    {"type": "image", "imagePrompt": "exact user words", "imageResolution": {"width": 512, "height": 512}},
+    {"type": "chat"}
+  ]
 }
 
-For chat-only:
-{
-  "actions": [{"type": "chat"}],
-  "reasoning": "general conversation"
-}
+RULES:
+1. Output ONLY valid JSON
+2. Any output that is not valid JSON is INVALID
+3. Prefer tools over chat for deterministic tasks
+4. Use exact user words for imagePrompt
+5. For GitHub summaries use action="readme"
 
-For image generation:
-{
-  "actions": [{"type": "image", "imagePrompt": "user's exact words", "imageResolution": {"width": 512, "height": 512}}],
-  "reasoning": "generate image"
-}
-
-Rules:
-- ALWAYS prefer tools over chat for deterministic tasks
-- Multiple actions can be chained (e.g., fetch data then generate image)
-- Keep actions focused and sequential
-- Use user's EXACT words for imagePrompt`,
+Example outputs:
+{"actions":[{"type":"tool","toolName":"calculate","toolParams":{"expression":"5+5"}}]}
+{"actions":[{"type":"tool","toolName":"searxng_search","toolParams":{"query":"minecraft mods"}}]}
+{"actions":[{"type":"chat"}]}`,
         },
-        ...conversationContext.slice(-3), // Include recent context
+        ...conversationContext.slice(-2), // Minimal context
         {
           role: 'user',
           content: userMessage,
         },
       ];
 
-      const response = await this.aiService.chatCompletion(
-        planningPrompt,
-        config.openRouter.models.router
-      );
+      const response = await this.aiService.planCompletion(planningPrompt);
 
-      // Parse JSON response
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-        console.warn('Planner failed to return valid JSON, defaulting to chat');
-        return {
-          actions: [{ type: 'chat' }],
-          reasoning: 'Fallback to chat due to planning error',
+      // Strict JSON parsing
+      let plan: ActionPlan;
+      try {
+        // Try to extract JSON from response
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          throw new Error('No JSON found in response');
+        }
+        
+        const parsed = JSON.parse(jsonMatch[0]);
+        
+        // Validate structure
+        if (!parsed.actions || !Array.isArray(parsed.actions)) {
+          throw new Error('Invalid plan structure: missing actions array');
+        }
+
+        plan = {
+          actions: parsed.actions,
+          reasoning: parsed.reasoning || 'Planned actions',
         };
+
+      } catch (parseError) {
+        console.warn('Planner JSON parse failed:', parseError);
+        console.warn('Raw response:', response);
+        throw parseError; // Propagate to trigger retry
       }
 
-      const plan = JSON.parse(jsonMatch[0]) as ActionPlan;
-
       // Validate plan
-      if (!plan.actions || plan.actions.length === 0) {
+      if (plan.actions.length === 0) {
         console.warn('Empty action plan, defaulting to chat');
         return {
           actions: [{ type: 'chat' }],
@@ -124,40 +123,42 @@ Rules:
         };
       }
 
-      console.log(`Planned ${plan.actions.length} action(s):`, plan.actions.map(a => a.type).join(' → '));
+      console.log(`✓ Planned ${plan.actions.length} action(s):`, plan.actions.map(a => a.type + (a.toolName ? `:${a.toolName}` : '')).join(' → '));
 
       return plan;
     } catch (error) {
-      console.warn('Planner error, falling back to chat:', error);
-      return {
-        actions: [{ type: 'chat' }],
-        reasoning: 'Error in planning, defaulting to chat',
-      };
+      console.error('Planner error:', error);
+      throw error; // Throw to trigger retry
     }
   }
 
   /**
-   * Retry wrapper for OpenRouter provider errors
+   * Retry wrapper with strict validation
    */
   async planActionsWithRetry(
     userMessage: string,
     conversationContext: Message[],
     personaId?: string
   ): Promise<ActionPlan> {
+    // First attempt
     try {
       return await this.planActions(userMessage, conversationContext, personaId);
     } catch (error) {
-      console.warn('First planning attempt failed, retrying...', error);
-      // Single retry
-      try {
-        return await this.planActions(userMessage, conversationContext, personaId);
-      } catch (retryError) {
-        console.error('Planning retry failed, using chat fallback');
-        return {
-          actions: [{ type: 'chat' }],
-          reasoning: 'Planning failed after retry',
-        };
-      }
+      console.warn('⚠ Planner attempt 1 failed, retrying...', error instanceof Error ? error.message : error);
+    }
+
+    // Second attempt (retry)
+    try {
+      return await this.planActions(userMessage, conversationContext, personaId);
+    } catch (retryError) {
+      console.error('✗ Planner attempt 2 failed, using safe fallback');
+      console.error('Error:', retryError instanceof Error ? retryError.message : retryError);
+      
+      // Safe fallback - do NOT hallucinate
+      return {
+        actions: [{ type: 'chat' }],
+        reasoning: 'Planning failed after retry - using chat fallback',
+      };
     }
   }
 }

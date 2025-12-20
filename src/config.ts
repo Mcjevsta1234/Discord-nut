@@ -14,6 +14,7 @@ export interface Config {
       router: string;
       chat: string;
       summarizer: string;
+      planner: string;
     };
     allowedChatModels: string[];
   };
@@ -69,6 +70,7 @@ export const config: Config = {
       router: getEnvVar('OPENROUTER_MODEL_ROUTER', 'mistralai/devstral-2512:free'),
       chat: getEnvVar('OPENROUTER_MODEL_CHAT', 'mistralai/devstral-2512:free'),
       summarizer: getEnvVar('OPENROUTER_MODEL_SUMMARIZER', 'mistralai/devstral-2512:free'),
+      planner: getEnvVar('OPENROUTER_MODEL_PLANNER', 'qwen/qwen-2.5-7b-instruct:free'),
     },
     allowedChatModels: getEnvVarList(
       'OPENROUTER_ALLOWED_CHAT_MODELS',

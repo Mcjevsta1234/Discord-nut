@@ -66,6 +66,38 @@ export class OpenRouterService {
     }
   }
 
+  /**
+   * Strict planning completion with temperature 0 for deterministic JSON output
+   */
+  async planCompletion(messages: Message[]): Promise<string> {
+    try {
+      const response = await this.client.post<ChatCompletionResponse>(
+        '/chat/completions',
+        {
+          model: config.openRouter.models.planner,
+          messages,
+          temperature: 0,
+          top_p: 1,
+          max_tokens: 256,
+        }
+      );
+
+      const content = response.data.choices[0]?.message?.content;
+      if (!content) {
+        throw new Error('No content in planner response');
+      }
+
+      return content;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(
+          `OpenRouter planner error: ${error.response?.data?.error?.message || error.message}`
+        );
+      }
+      throw error;
+    }
+  }
+
   async summarizeConversation(messages: Message[]): Promise<string> {
     try {
       const summaryPrompt: Message[] = [
