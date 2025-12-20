@@ -5,14 +5,7 @@
 
 import { MCPClient } from './client';
 import { GetTimeTool } from './tools/getTime';
-import { SearxNGSearchTool } from './tools/searxngSearch';
-import { FetchUrlTool } from './tools/fetchUrl';
-import { MinecraftStatusTool } from './tools/minecraftStatus';
-import { GitHubRepoTool } from './tools/githubRepo';
-import { CalculatorTool } from './tools/calculator';
-import { UnitConverterTool } from './tools/unitConverter';
-import { CurrencyConverterTool } from './tools/currencyConverter';
-import { InfoUtilsTool } from './tools/infoUtils';
+import { WebSearchTool } from './tools/webSearch';
 
 /**
  * Register all default MCP tools with the client
@@ -22,14 +15,7 @@ export function registerDefaultTools(mcpClient: MCPClient): void {
 
   // Register built-in tools
   registry.register(new GetTimeTool());
-  registry.register(new SearxNGSearchTool()); // Deterministic web search
-  registry.register(new FetchUrlTool()); // URL content fetcher
-  registry.register(new MinecraftStatusTool());
-  registry.register(new GitHubRepoTool()); // Deterministic GitHub REST API
-  registry.register(new CalculatorTool());
-  registry.register(new UnitConverterTool());
-  registry.register(new CurrencyConverterTool());
-  registry.register(new InfoUtilsTool());
+  registry.register(new WebSearchTool());
 
   console.log(`Registered ${registry.count()} MCP tools`);
 }
@@ -41,12 +27,4 @@ export * from './types';
 
 // Export individual tools for custom registration
 export { GetTimeTool } from './tools/getTime';
-export { SearxNGSearchTool } from './tools/searxngSearch';
-export { FetchUrlTool } from './tools/fetchUrl';
-export { MinecraftStatusTool } from './tools/minecraftStatus';
-export { GitHubRepoTool } from './tools/githubRepo';
-export { CalculatorTool } from './tools/calculator';
-export { UnitConverterTool } from './tools/unitConverter';
-export { CurrencyConverterTool } from './tools/currencyConverter';
-export { InfoUtilsTool } from './tools/infoUtils';
-
+export { WebSearchTool } from './tools/webSearch';

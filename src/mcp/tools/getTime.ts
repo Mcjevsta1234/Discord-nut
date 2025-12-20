@@ -1,6 +1,6 @@
 /**
  * Get Time Tool
- * Returns Discord-formatted timestamps for chat display
+ * A simple read-only tool that returns the current date and time
  */
 
 import { MCPTool, MCPToolDefinition, MCPToolResult } from '../types';
@@ -8,50 +8,63 @@ import { MCPTool, MCPToolDefinition, MCPToolResult } from '../types';
 export class GetTimeTool implements MCPTool {
   definition: MCPToolDefinition = {
     name: 'get_time',
-    description: 'Get current time as a Discord timestamp. Returns <t:UNIX:s> format by default.',
+    description: 'Get the current date and time in ISO 8601 format or a custom format',
     parameters: [
       {
         name: 'format',
         type: 'string',
-        description: 'Discord timestamp format: "s" (short time, default), "f" (full date+time), "R" (relative). Or "unix" for raw seconds.',
+        description: 'Optional format: "iso", "locale", or "unix". Default is "iso"',
         required: false,
-        default: 's',
+        default: 'iso',
+      },
+      {
+        name: 'timezone',
+        type: 'string',
+        description: 'Optional timezone (e.g., "America/New_York", "UTC"). Default is local timezone',
+        required: false,
       },
     ],
   };
 
   async execute(params: Record<string, any>): Promise<MCPToolResult> {
     try {
-      const format = params.format || 's';
+      const format = params.format || 'iso';
+      const timezone = params.timezone;
       const now = new Date();
-      const unixTimestamp = Math.floor(now.getTime() / 1000);
 
-      let result: string;
+      let timeString: string;
+      let additionalInfo: any = {};
 
-      // Generate Discord timestamp or raw unix
       switch (format) {
-        case 's': // Short time (e.g., "12:00 PM")
-        case 'f': // Full date and time
-        case 'R': // Relative (e.g., "2 hours ago")
-        case 't': // Short time
-        case 'T': // Long time
-        case 'D': // Short date
-        case 'F': // Long date
-          result = `<t:${unixTimestamp}:${format}>`;
+        case 'iso':
+          timeString = now.toISOString();
+          break;
+        case 'locale':
+          if (timezone) {
+            timeString = now.toLocaleString('en-US', { timeZone: timezone });
+            additionalInfo.timezone = timezone;
+          } else {
+            timeString = now.toLocaleString();
+          }
           break;
         case 'unix':
-          result = unixTimestamp.toString();
+          timeString = Math.floor(now.getTime() / 1000).toString();
+          additionalInfo.unit = 'seconds';
           break;
         default:
           return {
             success: false,
-            error: `Invalid format: ${format}. Use Discord formats (s/f/R/t/T/D/F) or "unix"`,
+            error: `Invalid format: ${format}. Use "iso", "locale", or "unix"`,
           };
       }
 
       return {
         success: true,
-        data: result,
+        data: {
+          time: timeString,
+          format,
+          ...additionalInfo,
+        },
       };
     } catch (error) {
       return {

@@ -8,11 +8,9 @@ export interface Message {
 }
 
 export interface RouteDecision {
-  route: 'chat' | 'tool' | 'image';
+  route: 'chat' | 'tool';
   toolName?: string;
   toolParams?: Record<string, any>;
-  imagePrompt?: string;
-  imageResolution?: { width: number; height: number };
   reasoning?: string;
 }
 
@@ -60,38 +58,6 @@ export class OpenRouterService {
       if (axios.isAxiosError(error)) {
         throw new Error(
           `OpenRouter API error: ${error.response?.data?.error?.message || error.message}`
-        );
-      }
-      throw error;
-    }
-  }
-
-  /**
-   * Strict planning completion with temperature 0 for deterministic JSON output
-   */
-  async planCompletion(messages: Message[]): Promise<string> {
-    try {
-      const response = await this.client.post<ChatCompletionResponse>(
-        '/chat/completions',
-        {
-          model: config.openRouter.models.planner,
-          messages,
-          temperature: 0,
-          top_p: 1,
-          max_tokens: 256,
-        }
-      );
-
-      const content = response.data.choices[0]?.message?.content;
-      if (!content) {
-        throw new Error('No content in planner response');
-      }
-
-      return content;
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        throw new Error(
-          `OpenRouter planner error: ${error.response?.data?.error?.message || error.message}`
         );
       }
       throw error;
@@ -161,53 +127,20 @@ export class OpenRouterService {
       const routingPrompt: Message[] = [
         {
           role: 'system',
-          content: `You are a query router. Analyze the user's query and decide if it requires a tool, image generation, or regular chat.
+          content: `You are a query router. Analyze the user's query and decide if it requires a tool or regular chat.
 
 Available tools:
 ${toolList}
 
-IMPORTANT Tool Detection Rules:
-- Math expressions (e.g., "14*3+9", "what's 5+5") → use "calculate" tool
-- Unit conversions (e.g., "6ft to cm", "convert 50kg to pounds") → use "convert_units" tool
-- Currency conversions (e.g., "£25 in USD", "$100 to EUR") → use "convert_currency" tool
-- GitHub queries (e.g., "summarize owner/repo", "what does this repo do") → use "github_repo" tool with action="readme"
-- Time queries → use "get_time" tool
-- Web searches ("search for", "find", "look up") → use "searxng_search" tool
-- URLs/links in message → use "fetch_url" tool
-- Minecraft server status → use "minecraft_status" tool
-
-Critical: GitHub repo summaries require action="readme" parameter
-
 Respond with ONLY a JSON object in this format:
-
-For regular chat:
 {
-  "route": "chat",
+  "route": "chat" | "tool",
+  "toolName": "tool_name" (only if route is "tool"),
+  "toolParams": {"param": "value"} (only if route is "tool"),
   "reasoning": "brief explanation"
 }
 
-For tool usage:
-{
-  "route": "tool",
-  "toolName": "tool_name",
-  "toolParams": {"param": "value"},
-  "reasoning": "brief explanation"
-}
-
-For image generation (ONLY when user explicitly or clearly requests visual/image creation):
-{
-  "route": "image",
-  "imagePrompt": "user's exact prompt",
-  "imageResolution": {"width": 512, "height": 512},
-  "reasoning": "brief explanation"
-}
-
-Routing rules:
-- ALWAYS prefer tools over chat for deterministic tasks (math, conversions, repo info)
-- Use "image" route ONLY when user explicitly asks for image generation, pictures, drawings, or visual content
-- If unclear whether they want an image, use "chat" and ask for clarification
-- Default to "chat" only for general conversation that doesn't fit any tool
-- For imagePrompt: Use the user's EXACT words/prompt without modification`,
+Use tools ONLY when explicitly needed (e.g., current time, web search). Default to "chat" for general conversation.`,
         },
         {
           role: 'user',
