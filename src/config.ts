@@ -10,13 +10,6 @@ export interface Config {
   openRouter: {
     apiKey: string;
     baseUrl: string;
-    models: {
-      router: string;
-      chat: string;
-      summarizer: string;
-      planner: string;
-    };
-    allowedChatModels: string[];
   };
   image: {
     model: string;
@@ -66,16 +59,6 @@ export const config: Config = {
   openRouter: {
     apiKey: getEnvVar('OPENROUTER_API_KEY'),
     baseUrl: getEnvVar('OPENROUTER_BASE_URL', 'https://openrouter.ai/api/v1'),
-    models: {
-      router: getEnvVar('OPENROUTER_MODEL_ROUTER', 'meta-llama/llama-3.3-70b-instruct:free'),
-      chat: getEnvVar('OPENROUTER_MODEL_CHAT', 'mistralai/devstral-2512:free'),
-      summarizer: getEnvVar('OPENROUTER_MODEL_SUMMARIZER', 'mistralai/devstral-2512:free'),
-      planner: getEnvVar('OPENROUTER_MODEL_PLANNER', 'qwen/qwen-2.5-7b-instruct:free'),
-    },
-    allowedChatModels: getEnvVarList(
-      'OPENROUTER_ALLOWED_CHAT_MODELS',
-      'mistralai/devstral-2512:free,openai/gpt-4o-mini,anthropic/claude-3.5-sonnet'
-    ),
   },
   image: {
     model: getEnvVar('IMAGE_MODEL', 'google/gemini-2.5-flash-image'),

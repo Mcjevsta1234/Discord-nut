@@ -1,5 +1,6 @@
 import { Message, OpenRouterService } from './openRouterService';
 import { config } from '../config';
+import { routingConfig } from '../config/routing';
 
 export interface MemorySummary {
   summary: string;
@@ -78,9 +79,10 @@ Be extremely concise. Skip irrelevant chatter.`,
         },
       ];
 
+      // Summarization uses INSTANT tier (fast, cheap, good at summarization)
       const summaryText = await this.aiService.chatCompletion(
         summaryPrompt,
-        config.openRouter.models.summarizer
+        routingConfig.tiers.INSTANT.modelId
       );
 
       // Parse summary into structured format

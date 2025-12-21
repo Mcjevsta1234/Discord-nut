@@ -118,25 +118,15 @@ export class AdminCommandHandler {
     });
   }
 
+  /**
+   * DEPRECATED: Manual model selection is no longer supported.
+   * Model selection is now automatic via RouterService.
+   */
   private async handleChatModel(
     interaction: ChatInputCommandInteraction
   ): Promise<void> {
-    const model = interaction.options.getString('model', true);
-
-    if (!config.openRouter.allowedChatModels.includes(model)) {
-      await interaction.reply({
-        content: `Model not allowed. Choose one of: ${config.openRouter.allowedChatModels.join(
-          ', '
-        )}.`,
-        ephemeral: true,
-      });
-      return;
-    }
-
-    this.promptManager.updateChatModel(interaction.channelId, model);
-
     await interaction.reply({
-      content: `Chat model set to \`${model}\` for this channel.`,
+      content: `⚠️ **This command is deprecated.**\n\nModel selection is now **automatic** via the 4-tier routing system:\n• **INSTANT** - Fast responses for simple queries\n• **SMART** - General-purpose reasoning\n• **THINKING** - Deep analysis\n• **CODING** - Code generation\n\nThe system automatically selects the best model for each query.`,
       ephemeral: true,
     });
   }

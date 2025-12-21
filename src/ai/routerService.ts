@@ -13,9 +13,9 @@ import {
   ModelTier,
   RoutingFlags,
   RoutingDecision,
-  getModelConfig,
-  ROUTER_MODEL,
-} from './modelTiers';
+  getTierConfig,
+  routingConfig,
+} from '../config/routing';
 
 export class RouterService {
   private aiService: OpenRouterService;
@@ -39,7 +39,8 @@ export class RouterService {
     const heuristicDecision = this.routeByHeuristics(flags, userMessage);
 
     // 3. If heuristics are confident, use them
-    if (heuristicDecision.confidence >= 0.8) {
+    const confidenceThreshold = routingConfig.confidenceThreshold;
+    if (heuristicDecision.confidence >= confidenceThreshold) {
       console.log(`🎯 Routing: ${heuristicDecision.tier} (heuristic, ${(heuristicDecision.confidence * 100).toFixed(0)}% confidence)`);
       return heuristicDecision;
     }
@@ -176,7 +177,7 @@ export class RouterService {
       confidence = 0.6;
     }
 
-    const modelConfig = getModelConfig(tier);
+    const modelConfig = getTierConfig(tier);
 
     return {
       tier,
@@ -227,7 +228,7 @@ Choose tier:`,
     try {
       const response = await this.aiService.chatCompletionWithMetadata(
         routerPrompt,
-        ROUTER_MODEL
+        routingConfig.routerModelId
       );
 
       const tierText = response.content.trim().toUpperCase();
@@ -245,7 +246,7 @@ Choose tier:`,
         tier = ModelTier.SMART;
       }
 
-      const modelConfig = getModelConfig(tier);
+      const modelConfig = getTierConfig(tier);
 
       return {
         tier,
@@ -283,7 +284,7 @@ Choose tier:`,
    * Create a routing decision with a specific tier (for manual overrides)
    */
   createManualDecision(tier: ModelTier, reason: string): RoutingDecision {
-    const modelConfig = getModelConfig(tier);
+    const modelConfig = getTierConfig(tier);
     
     return {
       tier,

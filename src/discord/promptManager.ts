@@ -91,13 +91,11 @@ export class PromptManager {
 
   /**
    * DEPRECATED: Model selection is now handled by RouterService
-   * This method is kept for backward compatibility only
+   * This method should not be used - all model selection happens via RouterService
    */
   getChatModel(channelId: string, personaId?: string): string {
-    console.warn('⚠️ getChatModel() is deprecated. Model selection is now automatic via RouterService.');
-    
-    // Return a default model for backward compatibility
-    return config.openRouter.models.chat;
+    console.error('❌ getChatModel() called but is deprecated! Use RouterService.route() instead.');
+    throw new Error('getChatModel() is deprecated. Use RouterService for model selection.');
   }
 
   composeChatPrompt(

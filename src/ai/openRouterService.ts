@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import { config } from '../config';
+import { routingConfig } from '../config/routing';
 import { MCPClient, MCPToolResult } from '../mcp';
 import { LLMResponse, LLMResponseMetadata, calculateCost } from './llmMetadata';
 
@@ -50,10 +51,13 @@ export class OpenRouterService {
   /**
    * Chat completion with metadata tracking
    * Returns both content and token usage information
+   * 
+   * NOTE: Model should be selected via RouterService.
+   * This is a low-level method that accepts any model ID.
    */
-  async chatCompletionWithMetadata(messages: Message[], model?: string): Promise<LLMResponse> {
+  async chatCompletionWithMetadata(messages: Message[], model: string): Promise<LLMResponse> {
     const requestTimestamp = Date.now();
-    const selectedModel = model || config.openRouter.models.chat;
+    const selectedModel = model; // Model selection happens at RouterService level
     
     try {
       const response = await this.client.post<ChatCompletionResponse>(
@@ -120,18 +124,23 @@ export class OpenRouterService {
   /**
    * Legacy method - kept for backward compatibility
    * Prefer chatCompletionWithMetadata for new code
+   * 
+   * NOTE: This should only be used for special-purpose calls.
+   * For chat responses, use RouterService to select the model.
    */
-  async chatCompletion(messages: Message[], model?: string): Promise<string> {
+  async chatCompletion(messages: Message[], model: string): Promise<string> {
     const response = await this.chatCompletionWithMetadata(messages, model);
     return response.content;
   }
 
   /**
    * Planning completion with metadata tracking
+   * Uses a fast, cheap model optimized for structured planning output
    */
   async planCompletionWithMetadata(messages: Message[]): Promise<LLMResponse> {
     const requestTimestamp = Date.now();
-    const selectedModel = config.openRouter.models.planner;
+    // Planner uses INSTANT tier model (fast, cheap, good at structured output)
+    const selectedModel = routingConfig.tiers.INSTANT.modelId;
     
     try {
       const response = await this.client.post<ChatCompletionResponse>(
@@ -220,9 +229,10 @@ export class OpenRouterService {
         },
       ];
 
+      // Summarization uses INSTANT tier (fast, cheap, good at summarization)
       return await this.chatCompletion(
         summaryPrompt,
-        config.openRouter.models.summarizer
+        routingConfig.tiers.INSTANT.modelId
       );
     } catch (error) {
       console.error('Error summarizing conversation:', error);
@@ -244,9 +254,10 @@ export class OpenRouterService {
         },
       ];
 
+      // Use router model for routing decisions
       return await this.chatCompletion(
         routingPrompt,
-        config.openRouter.models.router
+        routingConfig.routerModelId
       );
     } catch (error) {
       console.error('Error routing query:', error);
@@ -323,7 +334,7 @@ Routing rules:
 
       const response = await this.chatCompletion(
         routingPrompt,
-        config.openRouter.models.router
+        routingConfig.routerModelId
       );
 
       // Parse JSON response
