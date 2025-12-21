@@ -7,6 +7,7 @@ import { Planner } from '../ai/planner';
 import { ActionExecutor } from '../ai/actionExecutor';
 import { MCPToolResult } from '../mcp';
 import { ResponseRenderer, ResponseMetadata } from './responseRenderer';
+import { aggregateLLMMetadata, LLMResponseMetadata } from '../ai/llmMetadata';
 
 interface MessageContext {
   userContent: string;
@@ -136,6 +137,9 @@ export class MessageHandler {
         personaId
       );
 
+      // Track planning LLM call
+      const planningCallMetadata = plan.metadata;
+
       // Update working message: Executing
       await workingMessage.edit({
         embeds: [ResponseRenderer.updateWorkingEmbed(workingEmbed, 'executing')],
@@ -155,6 +159,13 @@ export class MessageHandler {
 
       // Handle image response separately if generated
       if (executionResult.hasImage && executionResult.imageData) {
+        // Add LLM metadata before sending
+        updatedMetadata.llmMetadata = aggregateLLMMetadata(
+          planningCallMetadata,
+          [],
+          undefined
+        );
+        
         await this.sendImageResponseWithRenderer(
           message,
           executionResult,
@@ -169,13 +180,16 @@ export class MessageHandler {
         embeds: [ResponseRenderer.updateWorkingEmbed(workingEmbed, 'responding')],
       }).catch(() => {});
 
-      // RESPONDER STEP: Generate final response
-      const finalResponse = await this.generateFinalResponse(
+      // RESPONDER STEP: Generate final response WITH METADATA
+      const responseResult = await this.generateFinalResponseWithMetadata(
         message.content,
         executionResult,
         composedPrompt.messages,
         composedPrompt.model
       );
+
+      const finalResponse = responseResult.content;
+      const responseCallMetadata = responseResult.metadata;
 
       // Add assistant response to memory (but not tool errors)
       if (finalResponse && !finalResponse.includes('encountered an error')) {
@@ -184,6 +198,13 @@ export class MessageHandler {
           content: finalResponse,
         });
       }
+
+      // Aggregate all LLM metadata
+      updatedMetadata.llmMetadata = aggregateLLMMetadata(
+        planningCallMetadata,
+        [],
+        responseCallMetadata
+      );
 
       // Render and send complete response with full transparency
       const rendered = ResponseRenderer.render(updatedMetadata, finalResponse);
@@ -367,6 +388,80 @@ export class MessageHandler {
 
   /**
    * Generate final response using persona model with action results as context
+   * NEW: Returns both content and LLM metadata for token tracking
+   */
+  private async generateFinalResponseWithMetadata(
+    userQuery: string,
+    executionResult: any,
+    conversationMessages: Message[],
+    model: string
+  ): Promise<{ content: string; metadata?: LLMResponseMetadata }> {
+    try {
+      // Check if there are any tool results to summarize
+      const hasToolResults = executionResult.results.some(
+        (r: any) => r.success && r.content && r.content.length > 0
+      );
+
+      if (!hasToolResults) {
+        // No tool results, just do normal chat WITH METADATA
+        const response = await this.aiService.chatCompletionWithMetadata(conversationMessages, model);
+        return { content: response.content, metadata: response.metadata };
+      }
+
+      // Build context from tool results
+      const toolContext = executionResult.results
+        .filter((r: any) => r.success && r.content)
+        .map((r: any, i: number) => `Result ${i + 1}:\n${r.content}`)
+        .join('\n\n');
+
+      // Create response prompt with tool context
+      const responsePrompt: Message[] = [
+        ...conversationMessages,
+        {
+          role: 'assistant',
+          content: `I executed the requested actions. Here are the results:\n\n${toolContext}`,
+        },
+        {
+          role: 'user',
+          content: `Based on the results above, provide a natural, conversational response to: "${userQuery}"`,
+        },
+      ];
+
+      const response = await this.aiService.chatCompletionWithMetadata(responsePrompt, model);
+
+      // Ensure valid response
+      if (!response.content || response.content.trim().length === 0) {
+        console.warn('Empty response from AI, returning tool context directly');
+        return {
+          content: `**Results:**\n${toolContext}`,
+          metadata: response.metadata,
+        };
+      }
+
+      return { content: response.content, metadata: response.metadata };
+    } catch (error) {
+      console.error('Error generating final response:', error);
+      
+      // Fallback: return tool results directly
+      const toolContext = executionResult.results
+        .filter((r: any) => r.success && r.content)
+        .map((r: any) => r.content)
+        .join('\n\n');
+
+      if (toolContext) {
+        return { content: toolContext, metadata: undefined };
+      }
+
+      return {
+        content: 'I processed your request but encountered an error generating a response.',
+        metadata: undefined,
+      };
+    }
+  }
+
+  /**
+   * Generate final response using persona model with action results as context
+   * LEGACY: Kept for backward compatibility
    */
   private async generateFinalResponse(
     userQuery: string,
@@ -899,12 +994,21 @@ export class MessageHandler {
           embeds: [ResponseRenderer.updateWorkingEmbed(workingEmbed, 'responding')],
         });
 
-        // Generate final response
-        const finalResponse = await this.generateFinalResponse(
+        // Generate final response WITH METADATA
+        const responseResult = await this.generateFinalResponseWithMetadata(
           context.userContent,
           executionResult,
           composedPrompt.messages,
           composedPrompt.model
+        );
+
+        const finalResponse = responseResult.content;
+
+        // Aggregate LLM metadata
+        updatedMetadata.llmMetadata = aggregateLLMMetadata(
+          metadata.plannerModel ? plan.metadata : undefined,
+          [],
+          responseResult.metadata
         );
 
         // Render and send with full transparency

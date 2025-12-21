@@ -11,6 +11,7 @@
 import { EmbedBuilder, Message as DiscordMessage, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { PlannedAction, ActionPlan } from '../ai/planner';
 import { ActionResult, ExecutionResult } from '../ai/actionExecutor';
+import { AggregatedLLMMetadata, LLMResponseMetadata } from '../ai/llmMetadata';
 
 /**
  * Metadata about the response generation process
@@ -29,12 +30,8 @@ export interface ResponseMetadata {
   responseModel: string;
   personaId?: string;
   
-  // Token usage (if available)
-  tokenUsage?: {
-    prompt?: number;
-    completion?: number;
-    total?: number;
-  };
+  // LLM token usage and timing (NEW)
+  llmMetadata?: AggregatedLLMMetadata;
   
   // Timing
   startTime: number;
@@ -121,6 +118,11 @@ export class ResponseRenderer {
     // 3. TOOLS SECTION
     sections.push('\n**🔧 Tools Used**');
     const toolsUsed = this.extractToolsUsed(metadata);
+    const toolCount = metadata.executionResults?.filter(r => 
+      r.success && metadata.plannedActions[metadata.executionResults!.indexOf(r)]?.type === 'tool'
+    ).length || 0;
+    
+    sections.push(`• Count: ${toolCount}`);
     if (toolsUsed.length === 0) {
       sections.push('• No tools were required for this response');
     } else {
@@ -134,15 +136,67 @@ export class ResponseRenderer {
       sections.push(`• Persona: \`${metadata.personaId}\``);
     }
 
-    // 5. PERFORMANCE SECTION (if available)
+    // 5. TOKEN USAGE SECTION (NEW - ALWAYS SHOW)
+    sections.push('\n**📊 Token Usage**');
+    if (metadata.llmMetadata) {
+      const llm = metadata.llmMetadata;
+      
+      // Show aggregated stats
+      if (llm.totalTokens > 0) {
+        sections.push(`• Total Tokens: ${llm.totalTokens.toLocaleString()}`);
+        
+        // Show breakdown by phase if multiple calls
+        if (llm.totalCalls > 1) {
+          if (llm.planningCall?.usage) {
+            sections.push(`  - Planning: ${llm.planningCall.usage.totalTokens || 0} tokens`);
+          }
+          if (llm.responseCall?.usage) {
+            sections.push(`  - Response: ${llm.responseCall.usage.totalTokens || 0} tokens`);
+          }
+        }
+        
+        // Show prompt/completion breakdown for main response
+        if (llm.responseCall?.usage) {
+          const u = llm.responseCall.usage;
+          sections.push(`• Prompt: ${u.promptTokens || 0} | Completion: ${u.completionTokens || 0}`);
+        }
+        
+        // Show cost if available
+        if (llm.totalCost > 0) {
+          sections.push(`• Estimated Cost: $${llm.totalCost.toFixed(4)}`);
+        } else {
+          sections.push(`• Cost: Free tier`);
+        }
+      } else {
+        sections.push('• Token data unavailable from provider');
+      }
+      
+      // Show models used
+      if (llm.modelsUsed.length > 0) {
+        sections.push(`• Models: ${llm.modelsUsed.map(m => `\`${this.truncate(m, 30)}\``).join(', ')}`);
+      }
+    } else {
+      sections.push('• Token usage tracking unavailable');
+      sections.push('• (Provider did not return usage data)');
+    }
+
+    // 6. PERFORMANCE SECTION
+    sections.push('\n**⚡ Performance**');
+    
+    // Total end-to-end time
     if (metadata.endTime) {
       const totalDuration = metadata.endTime - metadata.startTime;
-      sections.push('\n**⚡ Performance**');
       sections.push(`• Total Time: ${(totalDuration / 1000).toFixed(2)}s`);
-      
-      if (metadata.executionDuration !== undefined) {
-        sections.push(`• Execution Time: ${(metadata.executionDuration / 1000).toFixed(2)}s`);
-      }
+    }
+    
+    // LLM latency
+    if (metadata.llmMetadata && metadata.llmMetadata.totalLatencyMs > 0) {
+      sections.push(`• LLM Latency: ${(metadata.llmMetadata.totalLatencyMs / 1000).toFixed(2)}s`);
+    }
+    
+    // Execution time (tool calls)
+    if (metadata.executionDuration !== undefined && metadata.executionDuration > 0) {
+      sections.push(`• Tool Execution: ${(metadata.executionDuration / 1000).toFixed(2)}s`);
     }
 
     // Combine all sections

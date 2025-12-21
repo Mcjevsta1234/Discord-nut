@@ -5,6 +5,7 @@
 
 import { OpenRouterService, Message } from './openRouterService';
 import { config } from '../config';
+import { LLMResponseMetadata } from './llmMetadata';
 
 export interface PlannedAction {
   type: 'tool' | 'image' | 'chat';
@@ -18,6 +19,7 @@ export interface PlannedAction {
 export interface ActionPlan {
   actions: PlannedAction[];
   reasoning: string;
+  metadata?: LLMResponseMetadata;
 }
 
 export class Planner {
@@ -85,13 +87,13 @@ Example outputs:
         },
       ];
 
-      const response = await this.aiService.planCompletion(planningPrompt);
+      const response = await this.aiService.planCompletionWithMetadata(planningPrompt);
 
       // Strict JSON parsing
       let plan: ActionPlan;
       try {
         // Try to extract JSON from response
-        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        const jsonMatch = response.content.match(/\{[\s\S]*\}/);
         if (!jsonMatch) {
           throw new Error('No JSON found in response');
         }
@@ -106,6 +108,7 @@ Example outputs:
         plan = {
           actions: parsed.actions,
           reasoning: parsed.reasoning || 'Planned actions',
+          metadata: response.metadata,
         };
 
       } catch (parseError) {

@@ -1,6 +1,7 @@
 import axios, { AxiosInstance } from 'axios';
 import { config } from '../config';
 import { MCPClient, MCPToolResult } from '../mcp';
+import { LLMResponse, LLMResponseMetadata, calculateCost } from './llmMetadata';
 
 export interface Message {
   role: 'system' | 'user' | 'assistant';
@@ -23,6 +24,12 @@ export interface ChatCompletionResponse {
       content: string;
     };
   }>;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+  model?: string;
 }
 
 export class OpenRouterService {
@@ -40,23 +47,67 @@ export class OpenRouterService {
     this.mcpClient = mcpClient || new MCPClient();
   }
 
-  async chatCompletion(messages: Message[], model?: string): Promise<string> {
+  /**
+   * Chat completion with metadata tracking
+   * Returns both content and token usage information
+   */
+  async chatCompletionWithMetadata(messages: Message[], model?: string): Promise<LLMResponse> {
+    const requestTimestamp = Date.now();
+    const selectedModel = model || config.openRouter.models.chat;
+    
     try {
       const response = await this.client.post<ChatCompletionResponse>(
         '/chat/completions',
         {
-          model: model || config.openRouter.models.chat,
+          model: selectedModel,
           messages,
         }
       );
 
+      const responseTimestamp = Date.now();
       const content = response.data.choices[0]?.message?.content;
+      
       if (!content) {
         throw new Error('No content in response');
       }
 
-      return content;
+      // Extract token usage from response
+      const usage = response.data.usage;
+      const metadata: LLMResponseMetadata = {
+        model: response.data.model || selectedModel,
+        provider: 'openrouter',
+        usage: usage ? {
+          promptTokens: usage.prompt_tokens,
+          completionTokens: usage.completion_tokens,
+          totalTokens: usage.total_tokens,
+        } : undefined,
+        latencyMs: responseTimestamp - requestTimestamp,
+        requestTimestamp,
+        responseTimestamp,
+        success: true,
+      };
+
+      // Calculate cost if usage is available
+      if (metadata.usage && metadata.usage.totalTokens) {
+        metadata.estimatedCost = calculateCost(metadata.usage, metadata.model);
+        metadata.costCurrency = 'USD';
+      }
+
+      return { content, metadata };
     } catch (error) {
+      const responseTimestamp = Date.now();
+      
+      // Return error metadata
+      const errorMetadata: LLMResponseMetadata = {
+        model: selectedModel,
+        provider: 'openrouter',
+        latencyMs: responseTimestamp - requestTimestamp,
+        requestTimestamp,
+        responseTimestamp,
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+
       if (axios.isAxiosError(error)) {
         throw new Error(
           `OpenRouter API error: ${error.response?.data?.error?.message || error.message}`
@@ -67,14 +118,26 @@ export class OpenRouterService {
   }
 
   /**
-   * Strict planning completion with temperature 0 for deterministic JSON output
+   * Legacy method - kept for backward compatibility
+   * Prefer chatCompletionWithMetadata for new code
    */
-  async planCompletion(messages: Message[]): Promise<string> {
+  async chatCompletion(messages: Message[], model?: string): Promise<string> {
+    const response = await this.chatCompletionWithMetadata(messages, model);
+    return response.content;
+  }
+
+  /**
+   * Planning completion with metadata tracking
+   */
+  async planCompletionWithMetadata(messages: Message[]): Promise<LLMResponse> {
+    const requestTimestamp = Date.now();
+    const selectedModel = config.openRouter.models.planner;
+    
     try {
       const response = await this.client.post<ChatCompletionResponse>(
         '/chat/completions',
         {
-          model: config.openRouter.models.planner,
+          model: selectedModel,
           messages,
           temperature: 0,
           top_p: 1,
@@ -82,13 +145,47 @@ export class OpenRouterService {
         }
       );
 
+      const responseTimestamp = Date.now();
       const content = response.data.choices[0]?.message?.content;
+      
       if (!content) {
         throw new Error('No content in planner response');
       }
 
-      return content;
+      const usage = response.data.usage;
+      const metadata: LLMResponseMetadata = {
+        model: response.data.model || selectedModel,
+        provider: 'openrouter',
+        usage: usage ? {
+          promptTokens: usage.prompt_tokens,
+          completionTokens: usage.completion_tokens,
+          totalTokens: usage.total_tokens,
+        } : undefined,
+        latencyMs: responseTimestamp - requestTimestamp,
+        requestTimestamp,
+        responseTimestamp,
+        success: true,
+      };
+
+      if (metadata.usage && metadata.usage.totalTokens) {
+        metadata.estimatedCost = calculateCost(metadata.usage, metadata.model);
+        metadata.costCurrency = 'USD';
+      }
+
+      return { content, metadata };
     } catch (error) {
+      const responseTimestamp = Date.now();
+      
+      const errorMetadata: LLMResponseMetadata = {
+        model: selectedModel,
+        provider: 'openrouter',
+        latencyMs: responseTimestamp - requestTimestamp,
+        requestTimestamp,
+        responseTimestamp,
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+
       if (axios.isAxiosError(error)) {
         throw new Error(
           `OpenRouter planner error: ${error.response?.data?.error?.message || error.message}`
@@ -96,6 +193,15 @@ export class OpenRouterService {
       }
       throw error;
     }
+  }
+
+  /**
+   * Strict planning completion with temperature 0 for deterministic JSON output
+   * Legacy method - kept for backward compatibility
+   */
+  async planCompletion(messages: Message[]): Promise<string> {
+    const response = await this.planCompletionWithMetadata(messages);
+    return response.content;
   }
 
   async summarizeConversation(messages: Message[]): Promise<string> {
