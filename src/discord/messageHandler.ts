@@ -6,6 +6,7 @@ import { PromptManager } from './promptManager';
 import { Planner } from '../ai/planner';
 import { ActionExecutor } from '../ai/actionExecutor';
 import { MCPToolResult } from '../mcp';
+import { ResponseRenderer, ResponseMetadata } from './responseRenderer';
 
 interface MessageContext {
   userContent: string;
@@ -113,15 +114,12 @@ export class MessageHandler {
         personaId
       );
 
-      // Send working message immediately
-      const workingEmbed = new EmbedBuilder()
-        .setColor(0xffa500) // Orange for working
-        .setDescription('⏳ **Working on it...**')
-        .setTimestamp();
-
+      // Send working message immediately with new renderer
+      const workingEmbed = ResponseRenderer.createWorkingEmbed(message.content);
       const workingMessage = await message.reply({ embeds: [workingEmbed] });
 
       // PLANNER STEP: Decide what actions to take
+      const planStartTime = Date.now();
       const plan = await this.planner.planActionsWithRetry(
         message.content,
         composedPrompt.messages,
@@ -130,117 +128,80 @@ export class MessageHandler {
 
       console.log(`Action plan: ${plan.actions.map(a => a.type).join(' → ')}`);
 
-      // Determine if we should show Plan/Progress UX
-      const hasTools = plan.actions.some((a) => a.type === 'tool');
-      const hasMultipleActions = plan.actions.length > 1;
-      const isComplex = hasTools || hasMultipleActions;
+      // Create response metadata for transparency
+      const metadata: ResponseMetadata = ResponseRenderer.createMetadata(
+        plan.actions,
+        plan.reasoning,
+        composedPrompt.model,
+        personaId
+      );
 
-      if (isComplex) {
-        // PUBLIC PLAN/PROGRESS UX
-        // Build concise plan bullets (max 6)
-        const planBullets = this.buildPlanBullets(plan.actions).slice(0, 6);
-        const planSection = `**Plan**\n${planBullets.join('\n')}`;
+      // Update working message: Executing
+      await workingMessage.edit({
+        embeds: [ResponseRenderer.updateWorkingEmbed(workingEmbed, 'executing')],
+      }).catch(() => {});
 
-        // Show plan
-        await workingMessage.edit({
-          embeds: [
-            workingEmbed.setDescription(
-              `${planSection}\n\n⚙️ **Executing actions...**`
-            ),
-          ],
-        });
+      // EXECUTOR STEP: Execute all planned actions
+      const execStartTime = Date.now();
+      const executionResult = await this.executor.executeActions(plan.actions);
+      const execDuration = Date.now() - execStartTime;
 
-        // Execute with progress updates
-        const executionResult = await this.executeWithProgress(
-          plan.actions,
-          workingMessage,
-          workingEmbed,
-          planSection
-        );
+      // Update metadata with execution results
+      const updatedMetadata = ResponseRenderer.updateWithExecution(
+        metadata,
+        executionResult.results,
+        execDuration
+      );
 
-        // Handle image response separately if generated
-        if (executionResult.hasImage && executionResult.imageData) {
-          await this.sendImageResponse(message, executionResult, personaId, workingMessage);
-          return;
-        }
-
-        // Update: Generating response
-        await workingMessage.edit({
-          embeds: [
-            workingEmbed.setDescription(
-              `${planSection}\n\n✅ **Actions complete**\n\n💭 **Writing response...**`
-            ),
-          ],
-        });
-
-        // RESPONDER STEP: Generate final response
-        const finalResponse = await this.generateFinalResponse(
-          message.content,
-          executionResult,
-          composedPrompt.messages,
-          composedPrompt.model
-        );
-
-        // Add assistant response to memory (but not tool errors)
-        if (finalResponse && !finalResponse.includes('encountered an error')) {
-          await this.memoryManager.addMessage(channelId, {
-            role: 'assistant',
-            content: finalResponse,
-          });
-        }
-
-        // Send response with plan kept at top
-        const sentMessage = await this.sendResponseWithPlan(
+      // Handle image response separately if generated
+      if (executionResult.hasImage && executionResult.imageData) {
+        await this.sendImageResponseWithRenderer(
           message,
-          finalResponse,
-          planSection,
+          executionResult,
+          updatedMetadata,
           workingMessage
         );
+        return;
+      }
 
-        // Track context
-        if (sentMessage && personaId) {
-          this.promptManager.trackMessagePersona(sentMessage.id, personaId);
-          this.messageContexts.set(sentMessage.id, {
-            userContent: message.content,
-            personaId,
-            channelId,
-            originalMessageId: message.id,
-          });
-        }
-      } else {
-        // Simple response - no plan/progress needed
-        const executionResult = await this.executor.executeActions(plan.actions);
+      // Update working message: Responding
+      await workingMessage.edit({
+        embeds: [ResponseRenderer.updateWorkingEmbed(workingEmbed, 'responding')],
+      }).catch(() => {});
 
-        if (executionResult.hasImage && executionResult.imageData) {
-          await this.sendImageResponse(message, executionResult, personaId, workingMessage);
-          return;
-        }
+      // RESPONDER STEP: Generate final response
+      const finalResponse = await this.generateFinalResponse(
+        message.content,
+        executionResult,
+        composedPrompt.messages,
+        composedPrompt.model
+      );
 
-        const finalResponse = await this.generateFinalResponse(
-          message.content,
-          executionResult,
-          composedPrompt.messages,
-          composedPrompt.model
-        );
+      // Add assistant response to memory (but not tool errors)
+      if (finalResponse && !finalResponse.includes('encountered an error')) {
+        await this.memoryManager.addMessage(channelId, {
+          role: 'assistant',
+          content: finalResponse,
+        });
+      }
 
-        if (finalResponse && !finalResponse.includes('encountered an error')) {
-          await this.memoryManager.addMessage(channelId, {
-            role: 'assistant',
-            content: finalResponse,
-          });
-        }
+      // Render and send complete response with full transparency
+      const rendered = ResponseRenderer.render(updatedMetadata, finalResponse);
+      const sentMessage = await ResponseRenderer.sendToDiscord(
+        message,
+        rendered,
+        workingMessage
+      );
 
-        const sentMessage = await this.sendResponse(message, finalResponse, workingMessage);
-
-        if (sentMessage && personaId) {
-          this.promptManager.trackMessagePersona(sentMessage.id, personaId);
-          this.messageContexts.set(sentMessage.id, {
-            userContent: message.content,
-            personaId,
-            channelId,
-            originalMessageId: message.id,
-          });
-        }
+      // Track context
+      if (sentMessage && personaId) {
+        this.promptManager.trackMessagePersona(sentMessage.id, personaId);
+        this.messageContexts.set(sentMessage.id, {
+          userContent: message.content,
+          personaId,
+          channelId,
+          originalMessageId: message.id,
+        });
       }
 
       console.log(
@@ -470,7 +431,93 @@ export class MessageHandler {
   }
 
   /**
-   * Send image response with optional text context
+   * Send image response using the new ResponseRenderer
+   */
+  private async sendImageResponseWithRenderer(
+    message: DiscordMessage,
+    executionResult: any,
+    metadata: ResponseMetadata,
+    workingMessage?: DiscordMessage
+  ): Promise<void> {
+    try {
+      if (!executionResult.imageData) {
+        const errorMsg = 'Image generation was requested but no image was produced.';
+        if (workingMessage) {
+          await workingMessage.edit({ content: errorMsg, embeds: [] });
+        } else {
+          await message.reply(errorMsg);
+        }
+        return;
+      }
+
+      const { buffer, resolution, prompt } = executionResult.imageData;
+
+      // Check Discord size limit
+      if (!this.imageService.isDiscordSafe(buffer.length)) {
+        const sizeError = `⚠️ The generated image is too large for Discord (${Math.round(
+          buffer.length / (1024 * 1024)
+        )}MB). Try requesting a smaller resolution.`;
+        
+        if (workingMessage) {
+          await workingMessage.edit({ content: sizeError, embeds: [] });
+        } else {
+          await message.reply(sizeError);
+        }
+        return;
+      }
+
+      // Create attachment
+      const attachment = new AttachmentBuilder(buffer, {
+        name: 'generated-image.png',
+      });
+
+      // Render response with full transparency
+      const rendered = ResponseRenderer.render(
+        metadata,
+        `Generated image based on your request.`,
+        { buffer, resolution, prompt }
+      );
+
+      // Send system embed and response
+      const systemEmbed = rendered.systemEmbed;
+      
+      // Create image embed
+      const imageEmbed = new EmbedBuilder()
+        .setColor(0x00ff00)
+        .setTitle('🎨 Generated Image')
+        .setDescription(`**Prompt:** ${prompt}\n**Resolution:** ${resolution.width}×${resolution.height}`)
+        .setImage('attachment://generated-image.png')
+        .setTimestamp();
+
+      if (workingMessage) {
+        await workingMessage.edit({
+          content: null,
+          embeds: [systemEmbed, imageEmbed],
+          files: [attachment],
+          components: rendered.actionButtons ? [rendered.actionButtons] : [],
+        });
+      } else {
+        await message.reply({
+          embeds: [systemEmbed, imageEmbed],
+          files: [attachment],
+          components: rendered.actionButtons ? [rendered.actionButtons] : [],
+        });
+      }
+
+      console.log(`Generated image: ${resolution.width}×${resolution.height}, ${buffer.length} bytes`);
+    } catch (error) {
+      console.error('Error sending image response:', error);
+      const errorMsg = 'I generated an image but encountered an error sending it.';
+      if (workingMessage) {
+        await workingMessage.edit({ content: errorMsg, embeds: [] });
+      } else {
+        await message.reply(errorMsg);
+      }
+    }
+  }
+
+  /**
+   * Send image response with optional text context (DEPRECATED - use sendImageResponseWithRenderer)
    */
   private async sendImageResponse(
     message: DiscordMessage,
@@ -753,10 +800,7 @@ export class MessageHandler {
         await interaction.deferUpdate();
 
         // Update message to show regenerating
-        const workingEmbed = new EmbedBuilder()
-          .setColor(0xffa500)
-          .setDescription('⏳ **Regenerating response...**')
-          .setTimestamp();
+        const workingEmbed = ResponseRenderer.createWorkingEmbed(context.userContent);
 
         await interaction.message.edit({
           content: null,
@@ -775,7 +819,7 @@ export class MessageHandler {
 
         // Update: Planning
         await interaction.message.edit({
-          embeds: [workingEmbed.setDescription('⏳ **Regenerating...**\n🧠 Planning actions...')],
+          embeds: [ResponseRenderer.updateWorkingEmbed(workingEmbed, 'planning')],
         });
 
         // Rerun planner
@@ -785,25 +829,30 @@ export class MessageHandler {
           context.personaId
         );
 
-        // Update: Executing
-        const actionsList = plan.actions
-          .map((a, i) => {
-            const icon = a.type === 'tool' ? '🔧' : a.type === 'image' ? '🎨' : '💬';
-            const name = a.toolName || a.type;
-            return `${i + 1}. ${icon} ${name}`;
-          })
-          .join('\n');
+        // Create metadata
+        const metadata = ResponseRenderer.createMetadata(
+          plan.actions,
+          plan.reasoning,
+          composedPrompt.model,
+          context.personaId
+        );
 
+        // Update: Executing
         await interaction.message.edit({
-          embeds: [
-            workingEmbed.setDescription(
-              `⏳ **Regenerating...**\n✓ Planned ${plan.actions.length} action(s)\n\n${actionsList}\n\n⚙️ Executing...`
-            ),
-          ],
+          embeds: [ResponseRenderer.updateWorkingEmbed(workingEmbed, 'executing')],
         });
 
         // Execute actions
+        const execStartTime = Date.now();
         const executionResult = await this.executor.executeActions(plan.actions);
+        const execDuration = Date.now() - execStartTime;
+
+        // Update metadata
+        const updatedMetadata = ResponseRenderer.updateWithExecution(
+          metadata,
+          executionResult.results,
+          execDuration
+        );
 
         // Handle image separately
         if (executionResult.hasImage && executionResult.imageData) {
@@ -822,34 +871,32 @@ export class MessageHandler {
             name: 'generated-image.png',
           });
 
-          const embed = new EmbedBuilder()
-            .setColor(0x5865f2)
+          // Use renderer for system embed
+          const rendered = ResponseRenderer.render(
+            updatedMetadata,
+            'Regenerated image based on your request.',
+            { buffer, resolution, prompt }
+          );
+
+          const imageEmbed = new EmbedBuilder()
+            .setColor(0x00ff00)
             .setTitle('🎨 Regenerated Image')
-            .setDescription(`*${prompt}*\n\nResolution: ${resolution.width}×${resolution.height}`)
+            .setDescription(`**Prompt:** ${prompt}\n**Resolution:** ${resolution.width}×${resolution.height}`)
             .setImage('attachment://generated-image.png')
             .setTimestamp();
 
-          const redoButton = new ButtonBuilder()
-            .setCustomId('redo_response')
-            .setLabel('🔄 Regenerate')
-            .setStyle(ButtonStyle.Secondary);
-
-          const row = new ActionRowBuilder<ButtonBuilder>().addComponents(redoButton);
-
           await interaction.message.edit({
             content: null,
-            embeds: [embed],
+            embeds: [rendered.systemEmbed, imageEmbed],
             files: [attachment],
-            components: [row],
+            components: rendered.actionButtons ? [rendered.actionButtons] : [],
           });
           return;
         }
 
         // Update: Generating response
         await interaction.message.edit({
-          embeds: [
-            workingEmbed.setDescription('⏳ **Regenerating...**\n✓ Actions completed\n\n💭 Generating response...'),
-          ],
+          embeds: [ResponseRenderer.updateWorkingEmbed(workingEmbed, 'responding')],
         });
 
         // Generate final response
@@ -860,34 +907,22 @@ export class MessageHandler {
           composedPrompt.model
         );
 
-        // Create buttons
-        const redoButton = new ButtonBuilder()
-          .setCustomId('redo_response')
-          .setLabel('🔄 Regenerate')
-          .setStyle(ButtonStyle.Secondary);
+        // Render and send with full transparency
+        const rendered = ResponseRenderer.render(updatedMetadata, finalResponse);
 
-        const imageButton = new ButtonBuilder()
-          .setCustomId('generate_image')
-          .setLabel('🎨 Generate Image')
-          .setStyle(ButtonStyle.Primary);
+        // Send both embeds
+        const systemEmbed = rendered.systemEmbed;
+        const responseEmbed = new EmbedBuilder()
+          .setColor(0x00ff00)
+          .setTitle('💬 Regenerated Response')
+          .setDescription(rendered.responseContent.substring(0, 1900))
+          .setTimestamp();
 
-        const row = new ActionRowBuilder<ButtonBuilder>().addComponents(redoButton, imageButton);
-
-        // Update message with new response
-        if (this.shouldUseEmbed(finalResponse)) {
-          const embed = this.createEmbed(finalResponse);
-          await interaction.message.edit({
-            content: null,
-            embeds: [embed],
-            components: [row],
-          });
-        } else {
-          await interaction.message.edit({
-            content: finalResponse,
-            embeds: [],
-            components: [row],
-          });
-        }
+        await interaction.message.edit({
+          content: null,
+          embeds: [systemEmbed, responseEmbed],
+          components: rendered.actionButtons ? [rendered.actionButtons] : [],
+        });
 
         console.log(`Regenerated response for message ${interaction.message.id}`);
       } else if (interaction.customId === 'generate_image') {
@@ -906,10 +941,7 @@ export class MessageHandler {
         await interaction.deferUpdate();
 
         // Extract/create image prompt using AI
-        const workingEmbed = new EmbedBuilder()
-          .setColor(0xffa500)
-          .setDescription('⏳ **Generating image...**\n🤖 Creating image prompt...')
-          .setTimestamp();
+        const workingEmbed = ResponseRenderer.createWorkingEmbed('Generating image...');
 
         await interaction.message.edit({
           embeds: [workingEmbed],
@@ -936,9 +968,11 @@ export class MessageHandler {
 
           // Update: Generating image
           await interaction.message.edit({
-            embeds: [
-              workingEmbed.setDescription(`⏳ **Generating image...**\n🎨 Prompt: ${imagePrompt.substring(0, 100)}...`),
-            ],
+            embeds: [ResponseRenderer.updateWorkingEmbed(
+              workingEmbed,
+              'executing',
+              `🎨 Creating: ${imagePrompt.substring(0, 100)}...`
+            )],
           });
 
           // Generate image
@@ -961,30 +995,38 @@ export class MessageHandler {
             name: 'generated-image.png',
           });
 
-          const embed = new EmbedBuilder()
-            .setColor(0x5865f2)
+          // Create metadata for the image generation
+          const metadata = ResponseRenderer.createMetadata(
+            [{ type: 'image', imagePrompt: imagePrompt.trim() }],
+            'Generated image from button request',
+            'google/gemini-2.0-flash-exp:free',
+            context.personaId
+          );
+          metadata.endTime = Date.now();
+
+          // Render with transparency
+          const rendered = ResponseRenderer.render(
+            metadata,
+            'Generated image based on your request.',
+            {
+              buffer: imageResult.imageBuffer,
+              resolution: imageResult.resolution,
+              prompt: imagePrompt.trim(),
+            }
+          );
+
+          const imageEmbed = new EmbedBuilder()
+            .setColor(0x00ff00)
             .setTitle('🎨 Generated Image')
-            .setDescription(`*${imagePrompt}*\n\nResolution: ${imageResult.resolution.width}×${imageResult.resolution.height}`)
+            .setDescription(`**Prompt:** ${imagePrompt}\n**Resolution:** ${imageResult.resolution.width}×${imageResult.resolution.height}`)
             .setImage('attachment://generated-image.png')
             .setTimestamp();
 
-          const redoButton = new ButtonBuilder()
-            .setCustomId('redo_response')
-            .setLabel('🔄 Regenerate')
-            .setStyle(ButtonStyle.Secondary);
-
-          const imageButton = new ButtonBuilder()
-            .setCustomId('generate_image')
-            .setLabel('🎨 Generate Image')
-            .setStyle(ButtonStyle.Primary);
-
-          const row = new ActionRowBuilder<ButtonBuilder>().addComponents(redoButton, imageButton);
-
           await interaction.message.edit({
             content: null,
-            embeds: [embed],
+            embeds: [rendered.systemEmbed, imageEmbed],
             files: [attachment],
-            components: [row],
+            components: rendered.actionButtons ? [rendered.actionButtons] : [],
           });
 
           console.log(`Generated image from button: ${imageResult.resolution.width}×${imageResult.resolution.height}`);
