@@ -12,6 +12,7 @@ import { EmbedBuilder, Message as DiscordMessage, ActionRowBuilder, ButtonBuilde
 import { PlannedAction, ActionPlan } from '../ai/planner';
 import { ActionResult, ExecutionResult } from '../ai/actionExecutor';
 import { AggregatedLLMMetadata, LLMResponseMetadata } from '../ai/llmMetadata';
+import { RoutingDecision } from '../ai/modelTiers';
 
 /**
  * Metadata about the response generation process
@@ -29,6 +30,9 @@ export interface ResponseMetadata {
   // Response generation
   responseModel: string;
   personaId?: string;
+  
+  // Routing information (NEW)
+  routingDecision?: RoutingDecision;
   
   // LLM token usage and timing (NEW)
   llmMetadata?: AggregatedLLMMetadata;
@@ -129,9 +133,21 @@ export class ResponseRenderer {
       sections.push(toolsUsed.join('\n'));
     }
 
-    // 4. MODEL SECTION
-    sections.push('\n**🤖 Model Selection**');
-    sections.push(`• Response Model: \`${metadata.responseModel}\``);
+    // 4. ROUTING & MODEL SECTION (NEW - Shows routing decisions)
+    sections.push('\n**🎯 Routing & Model Selection**');
+    
+    if (metadata.routingDecision) {
+      const rd = metadata.routingDecision;
+      sections.push(`• Tier: \`${rd.tier}\``);
+      sections.push(`• Model: \`${this.truncate(rd.modelId, 50)}\``);
+      sections.push(`• Method: ${rd.routingMethod}`);
+      sections.push(`• Reason: ${rd.routingReason}`);
+      sections.push(`• Confidence: ${(rd.confidence * 100).toFixed(0)}%`);
+    } else {
+      // Fallback if no routing decision available
+      sections.push(`• Model: \`${this.truncate(metadata.responseModel, 50)}\``);
+    }
+    
     if (metadata.personaId) {
       sections.push(`• Persona: \`${metadata.personaId}\``);
     }

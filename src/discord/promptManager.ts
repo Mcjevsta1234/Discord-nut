@@ -21,7 +21,9 @@ export interface ChannelPromptOverrides {
 
 export interface ComposedPrompt {
   messages: Message[];
-  model: string;
+  // DEPRECATED: Model is now selected by RouterService, not PromptManager
+  // This field is kept for backward compatibility but should not be used
+  model?: string;
 }
 
 export class PromptManager {
@@ -87,25 +89,14 @@ export class PromptManager {
     return null;
   }
 
+  /**
+   * DEPRECATED: Model selection is now handled by RouterService
+   * This method is kept for backward compatibility only
+   */
   getChatModel(channelId: string, personaId?: string): string {
-    // Use persona-specific model if persona is provided
-    if (personaId) {
-      const persona = getPersona(personaId);
-      if (persona?.model) {
-        return persona.model;
-      }
-    }
-
-    // Fall back to channel override model
-    const overrideModel = this.overrides.get(channelId)?.chatModel;
-    if (
-      overrideModel &&
-      config.openRouter.allowedChatModels.includes(overrideModel)
-    ) {
-      return overrideModel;
-    }
-
-    // Fall back to default chat model
+    console.warn('⚠️ getChatModel() is deprecated. Model selection is now automatic via RouterService.');
+    
+    // Return a default model for backward compatibility
     return config.openRouter.models.chat;
   }
 
@@ -171,9 +162,10 @@ export class PromptManager {
 
     messages.push(...conversation.recentMessages);
 
+    // NOTE: model field is deprecated and no longer populated
+    // RouterService handles all model selection
     return {
       messages,
-      model: this.getChatModel(channelId, activePersonaId),
     };
   }
 

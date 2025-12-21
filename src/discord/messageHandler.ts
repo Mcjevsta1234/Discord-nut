@@ -8,6 +8,8 @@ import { ActionExecutor } from '../ai/actionExecutor';
 import { MCPToolResult } from '../mcp';
 import { ResponseRenderer, ResponseMetadata } from './responseRenderer';
 import { aggregateLLMMetadata, LLMResponseMetadata } from '../ai/llmMetadata';
+import { RouterService } from '../ai/routerService';
+import { RoutingDecision } from '../ai/modelTiers';
 
 interface MessageContext {
   userContent: string;
@@ -24,6 +26,7 @@ export class MessageHandler {
   private promptManager: PromptManager;
   private planner: Planner;
   private executor: ActionExecutor;
+  private router: RouterService;
   private messageContexts: Map<string, MessageContext>;
 
   constructor(
@@ -39,6 +42,7 @@ export class MessageHandler {
     this.promptManager = promptManager;
     this.planner = new Planner(aiService);
     this.executor = new ActionExecutor(aiService);
+    this.router = new RouterService(aiService);
     this.messageContexts = new Map();
   }
 
@@ -119,6 +123,14 @@ export class MessageHandler {
       const workingEmbed = ResponseRenderer.createWorkingEmbed(message.content);
       const workingMessage = await message.reply({ embeds: [workingEmbed] });
 
+      // ROUTING STEP: Determine which model tier to use
+      console.log(`🎯 Routing message from ${message.author.username}...`);
+      const routingDecision = await this.router.route(
+        message.content,
+        composedPrompt.messages,
+        message.content.length
+      );
+
       // PLANNER STEP: Decide what actions to take
       const planStartTime = Date.now();
       const plan = await this.planner.planActionsWithRetry(
@@ -133,9 +145,12 @@ export class MessageHandler {
       const metadata: ResponseMetadata = ResponseRenderer.createMetadata(
         plan.actions,
         plan.reasoning,
-        composedPrompt.model,
+        routingDecision.modelId, // Use routed model
         personaId
       );
+
+      // Add routing decision to metadata
+      metadata.routingDecision = routingDecision;
 
       // Track planning LLM call
       const planningCallMetadata = plan.metadata;
@@ -185,7 +200,7 @@ export class MessageHandler {
         message.content,
         executionResult,
         composedPrompt.messages,
-        composedPrompt.model
+        routingDecision.modelId // Use routed model
       );
 
       const finalResponse = responseResult.content;
@@ -912,6 +927,13 @@ export class MessageHandler {
           context.personaId
         );
 
+        // ROUTING: Determine model tier
+        const routingDecision = await this.router.route(
+          context.userContent,
+          composedPrompt.messages,
+          context.userContent.length
+        );
+
         // Update: Planning
         await interaction.message.edit({
           embeds: [ResponseRenderer.updateWorkingEmbed(workingEmbed, 'planning')],
@@ -924,13 +946,14 @@ export class MessageHandler {
           context.personaId
         );
 
-        // Create metadata
+        // Create metadata with routing decision
         const metadata = ResponseRenderer.createMetadata(
           plan.actions,
           plan.reasoning,
-          composedPrompt.model,
+          routingDecision.modelId, // Use routed model
           context.personaId
         );
+        metadata.routingDecision = routingDecision;
 
         // Update: Executing
         await interaction.message.edit({
@@ -999,7 +1022,7 @@ export class MessageHandler {
           context.userContent,
           executionResult,
           composedPrompt.messages,
-          composedPrompt.model
+          routingDecision.modelId // Use routed model
         );
 
         const finalResponse = responseResult.content;

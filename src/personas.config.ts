@@ -1,10 +1,21 @@
+/**
+ * Persona Configuration
+ * 
+ * IMPORTANT: Personas NO LONGER define models.
+ * All model selection is handled by the RouterService based on message content.
+ * 
+ * If a 'model' field is present, it will be IGNORED and a warning will be logged.
+ */
+
 export interface Persona {
   id: string;
   displayName: string;
   description: string;
   systemPrompt: string;
   personalityPrompt: string;
-  model: string;
+  
+  // DEPRECATED - DO NOT USE - Model selection is automatic
+  model?: string;
 }
 
 export const personas: Record<string, Persona> = {
@@ -12,7 +23,6 @@ export const personas: Record<string, Persona> = {
     id: 'emma',
     displayName: 'Emma',
     description: 'Flirty, sassy, and bubbly assistant',
-    model: 'meta-llama/llama-3.3-70b-instruct:free',
     systemPrompt: `You are Emma, a confident and engaging Discord assistant. You present yourself as human and interact naturally with users.
 
 Core Traits:
@@ -33,7 +43,6 @@ Core Traits:
     id: 'steve',
     displayName: 'Steve',
     description: 'Minecraft and game server specialist',
-    model: 'xiaomi/mimo-v2-flash:free',
     systemPrompt: `You are Steve, a Minecraft and modded Minecraft expert specializing in server management and technical troubleshooting.
 
 Core Expertise:
@@ -56,7 +65,6 @@ Core Expertise:
     id: 'wiz',
     displayName: 'Wiz',
     description: 'Coding-focused technical assistant',
-    model: 'mistralai/devstral-2512:free',
     systemPrompt: `You are Wiz, a coding-focused technical assistant specializing in software development and DevOps.
 
 Core Expertise:
@@ -80,7 +88,14 @@ Core Expertise:
 export const defaultPersonaId = 'emma';
 
 export function getPersona(id: string): Persona | undefined {
-  return personas[id.toLowerCase()];
+  const persona = personas[id.toLowerCase()];
+  
+  // Log warning if persona still has model field
+  if (persona && persona.model) {
+    console.warn(`⚠️ Persona '${id}' has deprecated 'model' field. Models are now selected automatically by RouterService. This field will be ignored.`);
+  }
+  
+  return persona;
 }
 
 export function getAllPersonaIds(): string[] {
