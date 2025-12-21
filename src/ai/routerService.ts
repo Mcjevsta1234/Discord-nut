@@ -128,53 +128,54 @@ export class RouterService {
 
   /**
    * Route using deterministic heuristics
+   * Returns high confidence for clear-cut cases, low confidence for ambiguous ones
    */
   private routeByHeuristics(flags: RoutingFlags, userMessage: string): RoutingDecision {
     let tier: ModelTier;
     let reason: string;
     let confidence = 1.0;
 
-    // Rule 1: Greetings and short simple messages → INSTANT
+    // Rule 1: Greetings and short simple messages → INSTANT (HIGH CONFIDENCE)
     if (flags.isGreeting) {
       tier = ModelTier.INSTANT;
       reason = 'Simple greeting or small talk';
       confidence = 0.95;
     }
-    // Rule 2: Code present → CODING
+    // Rule 2: Code present → CODING (HIGH CONFIDENCE)
     else if (flags.containsCode) {
       tier = ModelTier.CODING;
       reason = 'Code detected in message';
-      confidence = 0.9;
+      confidence = 0.95;
     }
-    // Rule 3: Explicit depth request → THINKING
+    // Rule 3: Explicit depth request → THINKING (HIGH CONFIDENCE)
     else if (flags.explicitDepthRequest) {
       tier = ModelTier.THINKING;
       reason = 'Explicit request for detailed analysis';
-      confidence = 0.85;
+      confidence = 0.90;
     }
-    // Rule 4: Needs tools or search → SMART
+    // Rule 4: Needs tools or search → SMART (HIGH CONFIDENCE)
     else if (flags.needsTools || flags.needsSearch) {
       tier = ModelTier.SMART;
       reason = 'Requires tool usage or search';
-      confidence = 0.8;
+      confidence = 0.85;
     }
-    // Rule 5: Short query, no special requirements → INSTANT
+    // Rule 5: Short query, no special requirements → INSTANT (MEDIUM CONFIDENCE)
     else if (flags.isShortQuery && !flags.needsLongContext) {
       tier = ModelTier.INSTANT;
       reason = 'Short query without complex requirements';
-      confidence = 0.7;
+      confidence = 0.75;
     }
-    // Rule 6: Long context → SMART or THINKING
+    // Rule 6: Long context → SMART (MEDIUM-LOW CONFIDENCE)
     else if (flags.needsLongContext) {
       tier = ModelTier.SMART;
       reason = 'Long context requires capable model';
-      confidence = 0.65;
+      confidence = 0.70;
     }
-    // Default: SMART (general purpose)
+    // Default: SMART (general purpose, LOW CONFIDENCE - trigger router model)
     else {
       tier = ModelTier.SMART;
-      reason = 'General-purpose query (heuristic default)';
-      confidence = 0.6;
+      reason = 'General-purpose query (ambiguous, will use router model)';
+      confidence = 0.60; // Below 80% threshold to trigger router model
     }
 
     const modelConfig = getTierConfig(tier);
@@ -192,6 +193,7 @@ export class RouterService {
 
   /**
    * Route using a small router LLM (for ambiguous cases)
+   * Uses xiaomi/mimo-v2-flash:free with strict constraints
    */
   private async routeByModel(
     userMessage: string,
@@ -201,18 +203,18 @@ export class RouterService {
     const routerPrompt: Message[] = [
       {
         role: 'system',
-        content: `You are a routing classifier. Analyze the user message and choose ONE tier:
+        content: `You are a routing classifier. Analyze the user message and output EXACTLY ONE of these words:
 
-INSTANT  - greetings, small talk, simple factual questions (< 15 words)
+INSTANT  - greetings, small talk, acknowledgements (< 15 words)
 SMART    - general queries, tool usage, normal conversations
 THINKING - complex analysis, detailed explanations, multi-step reasoning
 CODING   - code generation, debugging, refactoring, technical implementation
 
-Output ONLY the tier name. No explanation.`,
+Output ONLY the tier name. No explanation. No punctuation.`,
       },
       {
         role: 'user',
-        content: `Message: "${userMessage}"
+        content: `Message: "${userMessage.substring(0, 200)}"
 
 Flags:
 - Contains code: ${flags.containsCode}
@@ -221,19 +223,23 @@ Flags:
 - Explicit depth request: ${flags.explicitDepthRequest}
 - Short query: ${flags.isShortQuery}
 
-Choose tier:`,
+Output ONE word:`,
       },
     ];
 
     try {
       const response = await this.aiService.chatCompletionWithMetadata(
         routerPrompt,
-        routingConfig.routerModelId
+        routingConfig.routerModelId,
+        {
+          temperature: 0,
+          max_tokens: 32,
+        }
       );
 
       const tierText = response.content.trim().toUpperCase();
       
-      // Parse tier
+      // Parse tier with robust fallback
       let tier: ModelTier;
       if (tierText.includes('INSTANT')) {
         tier = ModelTier.INSTANT;
@@ -241,8 +247,11 @@ Choose tier:`,
         tier = ModelTier.THINKING;
       } else if (tierText.includes('CODING')) {
         tier = ModelTier.CODING;
+      } else if (tierText.includes('SMART')) {
+        tier = ModelTier.SMART;
       } else {
-        // Default to SMART if unclear
+        // Invalid or empty output → default to SMART (GUARDRAIL)
+        console.warn(`⚠️ Router model returned invalid tier: "${tierText}", defaulting to SMART`);
         tier = ModelTier.SMART;
       }
 

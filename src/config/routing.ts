@@ -128,7 +128,7 @@ export const routingConfig: RoutingConfig = {
   mode: getEnv('ROUTING_MODE', 'hybrid') as RoutingMode,
   
   // Router model used for intelligent routing decisions (should be fast and cheap)
-  routerModelId: getEnv('MODEL_ROUTER', 'google/gemini-2.0-flash-exp:free'),
+  routerModelId: getEnv('MODEL_ROUTER', 'xiaomi/mimo-v2-flash:free'),
   
   // Confidence threshold: if heuristic confidence < this, use router model
   confidenceThreshold: getEnvNumber('ROUTING_CONFIDENCE_THRESHOLD', 80) / 100,
@@ -144,44 +144,44 @@ export const routingConfig: RoutingConfig = {
   tiers: {
     [ModelTier.INSTANT]: {
       tier: ModelTier.INSTANT,
-      modelId: getEnv('MODEL_INSTANT', 'google/gemini-2.0-flash-exp:free'),
-      maxPromptTokens: getEnvNumber('MODEL_INSTANT_MAX_PROMPT', 32000),
-      maxOutputTokens: getEnvNumber('MODEL_INSTANT_MAX_OUTPUT', 8000),
+      modelId: getEnv('MODEL_INSTANT', 'xiaomi/mimo-v2-flash:free'),
+      maxPromptTokens: getEnvNumber('MODEL_INSTANT_MAX_PROMPT', 4000),
+      maxOutputTokens: getEnvNumber('MODEL_INSTANT_MAX_OUTPUT', 256),
       costTier: 'free',
-      provider: 'google',
-      supportsTools: true,
+      provider: 'xiaomi',
+      supportsTools: false, // INSTANT tier for greetings/short chat only
       supportsCaching: false,
     },
     
     [ModelTier.SMART]: {
       tier: ModelTier.SMART,
-      modelId: getEnv('MODEL_SMART', 'meta-llama/llama-3.3-70b-instruct:free'),
-      maxPromptTokens: getEnvNumber('MODEL_SMART_MAX_PROMPT', 128000),
-      maxOutputTokens: getEnvNumber('MODEL_SMART_MAX_OUTPUT', 32000),
+      modelId: getEnv('MODEL_SMART', 'deepseek/deepseek-r1-0528:free'),
+      maxPromptTokens: getEnvNumber('MODEL_SMART_MAX_PROMPT', 32000),
+      maxOutputTokens: getEnvNumber('MODEL_SMART_MAX_OUTPUT', 8000),
       costTier: 'free',
-      provider: 'meta',
+      provider: 'deepseek',
       supportsTools: true,
       supportsCaching: false,
     },
     
     [ModelTier.THINKING]: {
       tier: ModelTier.THINKING,
-      modelId: getEnv('MODEL_THINKING', 'google/gemini-2.0-flash-thinking-exp-1219:free'),
-      maxPromptTokens: getEnvNumber('MODEL_THINKING_MAX_PROMPT', 32000),
-      maxOutputTokens: getEnvNumber('MODEL_THINKING_MAX_OUTPUT', 8000),
+      modelId: getEnv('MODEL_THINKING', 'google/gemma-3-27b-it:free'),
+      maxPromptTokens: getEnvNumber('MODEL_THINKING_MAX_PROMPT', 64000),
+      maxOutputTokens: getEnvNumber('MODEL_THINKING_MAX_OUTPUT', 16000),
       costTier: 'free',
       provider: 'google',
-      supportsTools: false, // Thinking models typically don't support direct tool calling
+      supportsTools: true,
       supportsCaching: false,
     },
     
     [ModelTier.CODING]: {
       tier: ModelTier.CODING,
-      modelId: getEnv('MODEL_CODING', 'mistralai/devstral-2512:free'),
+      modelId: getEnv('MODEL_CODING', 'google/gemma-3-12b-it:free'),
       maxPromptTokens: getEnvNumber('MODEL_CODING_MAX_PROMPT', 32000),
       maxOutputTokens: getEnvNumber('MODEL_CODING_MAX_OUTPUT', 8000),
       costTier: 'free',
-      provider: 'mistralai',
+      provider: 'google',
       supportsTools: true,
       supportsCaching: false,
     },

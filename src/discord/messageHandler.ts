@@ -203,8 +203,35 @@ export class MessageHandler {
         routingDecision.modelId // Use routed model
       );
 
-      const finalResponse = responseResult.content;
-      const responseCallMetadata = responseResult.metadata;
+      let finalResponse = responseResult.content;
+      let responseCallMetadata = responseResult.metadata;
+
+      // GUARDRAIL: Check if INSTANT tier response is low-confidence or malformed
+      if (routingDecision.tier === 'INSTANT' && this.isLowQualityResponse(finalResponse)) {
+        console.log('⚠️ INSTANT response appears low-quality, retrying with SMART tier...');
+        
+        // Retry with SMART tier
+        const higherTier = this.router.getHigherTier(routingDecision.tier);
+        const retryDecision = this.router.createManualDecision(higherTier, 'INSTANT tier retry due to low confidence');
+        
+        const retryResult = await this.generateFinalResponseWithMetadata(
+          message.content,
+          executionResult,
+          composedPrompt.messages,
+          retryDecision.modelId
+        );
+        
+        finalResponse = retryResult.content;
+        responseCallMetadata = retryResult.metadata;
+        
+        // Update routing decision in metadata to reflect retry
+        updatedMetadata.routingDecision = {
+          ...retryDecision,
+          routingReason: `${routingDecision.routingReason} → Retried with ${higherTier} (low quality detected)`,
+        };
+        
+        console.log(`✅ Retry successful with ${higherTier} tier`);
+      }
 
       // Add assistant response to memory (but not tool errors)
       if (finalResponse && !finalResponse.includes('encountered an error')) {
@@ -251,6 +278,42 @@ export class MessageHandler {
         'Sorry, I encountered an error processing your message. Please try again later.'
       );
     }
+  }
+
+  /**
+   * Check if response is low quality and needs retry
+   * Used for INSTANT tier guardrails
+   */
+  private isLowQualityResponse(response: string): boolean {
+    if (!response || response.trim().length === 0) {
+      return true;
+    }
+    
+    // Check for very short responses that might be incomplete
+    if (response.trim().length < 10) {
+      return true;
+    }
+    
+    // Check for common error patterns
+    const errorPatterns = [
+      /^(error|failed|unable to)/i,
+      /^sorry,? (i|but)/i,
+      /could not (complete|process|understand)/i,
+      /\[object Object\]/i,
+      /undefined/i,
+      /null/i,
+    ];
+    
+    if (errorPatterns.some(pattern => pattern.test(response))) {
+      return true;
+    }
+    
+    // Check for malformed JSON or gibberish
+    if (response.startsWith('{') && !response.includes(':')) {
+      return true;
+    }
+    
+    return false;
   }
 
   /**

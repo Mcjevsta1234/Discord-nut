@@ -133,14 +133,14 @@ export class ResponseRenderer {
       sections.push(toolsUsed.join('\n'));
     }
 
-    // 4. ROUTING & MODEL SECTION (NEW - Shows routing decisions)
+    // 4. ROUTING & MODEL SECTION (Shows routing decisions)
     sections.push('\n**🎯 Routing & Model Selection**');
     
     if (metadata.routingDecision) {
       const rd = metadata.routingDecision;
       sections.push(`• Tier: \`${rd.tier}\``);
       sections.push(`• Model: \`${this.truncate(rd.modelId, 50)}\``);
-      sections.push(`• Method: ${rd.routingMethod}`);
+      sections.push(`• Method: ${rd.routingMethod === 'heuristic' ? '⚡ Heuristic' : rd.routingMethod === 'routerModel' ? '🤖 Router LLM' : '🔀 Hybrid'}`);
       sections.push(`• Reason: ${rd.routingReason}`);
       sections.push(`• Confidence: ${(rd.confidence * 100).toFixed(0)}%`);
     } else {

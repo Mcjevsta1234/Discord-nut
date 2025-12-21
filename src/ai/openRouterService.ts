@@ -55,7 +55,15 @@ export class OpenRouterService {
    * NOTE: Model should be selected via RouterService.
    * This is a low-level method that accepts any model ID.
    */
-  async chatCompletionWithMetadata(messages: Message[], model: string): Promise<LLMResponse> {
+  async chatCompletionWithMetadata(
+    messages: Message[], 
+    model: string,
+    options?: {
+      temperature?: number;
+      max_tokens?: number;
+      top_p?: number;
+    }
+  ): Promise<LLMResponse> {
     const requestTimestamp = Date.now();
     const selectedModel = model; // Model selection happens at RouterService level
     
@@ -65,6 +73,9 @@ export class OpenRouterService {
         {
           model: selectedModel,
           messages,
+          ...(options?.temperature !== undefined && { temperature: options.temperature }),
+          ...(options?.max_tokens !== undefined && { max_tokens: options.max_tokens }),
+          ...(options?.top_p !== undefined && { top_p: options.top_p }),
         }
       );
 
