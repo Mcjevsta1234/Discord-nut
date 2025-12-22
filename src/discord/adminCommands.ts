@@ -53,6 +53,18 @@ export class AdminCommandHandler {
         })
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .toJSON(),
+      // User-accessible clear command (safe for repeated use)
+      new SlashCommandBuilder()
+        .setName('clear')
+        .setDescription('Clear YOUR stored conversation context for this channel or DM')
+        .addStringOption((option) =>
+          option
+            .setName('target')
+            .setDescription('Who to clear (only "me")')
+            .addChoices({ name: 'me', value: 'me' })
+            .setRequired(false)
+        )
+        .toJSON(),
       new SlashCommandBuilder()
         .setName('set-chat-model')
         .setDescription('Set the chat model for this channel')
@@ -91,8 +103,8 @@ export class AdminCommandHandler {
 
   async handleInteraction(interaction: Interaction): Promise<void> {
     if (!interaction.isChatInputCommand()) return;
-    // Allow clear-context for all users; other admin commands require ManageGuild
-    const isClearContext = interaction.commandName === 'clear-context';
+    // Allow clear commands for all users; other admin commands require ManageGuild
+    const isClearContext = interaction.commandName === 'clear-context' || interaction.commandName === 'clear';
     if (!isClearContext && !this.hasPermission(interaction)) {
       await interaction.reply({
         content: 'You need the Manage Server permission to run this command.',
@@ -117,6 +129,20 @@ export class AdminCommandHandler {
     }
 
     if (interaction.commandName === 'clear-context') {
+      await this.handleClearContext(interaction);
+      return;
+    }
+
+    if (interaction.commandName === 'clear') {
+      // Optionally check target; only 'me' is supported
+      const target = interaction.options.getString('target') || 'me';
+      if (target !== 'me') {
+        await interaction.reply({
+          content: 'Only your own context can be cleared (use target: me).',
+          ephemeral: true,
+        });
+        return;
+      }
       await this.handleClearContext(interaction);
       return;
     }

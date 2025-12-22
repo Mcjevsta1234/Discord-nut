@@ -175,6 +175,10 @@ Run in the desired scope:
 - **Guild channel:** clears YOUR context at `context/guilds/{guildId}/{channelId}/{userId}.json`
 - **DM:** clears YOUR context at `context/dms/{userId}.json`
 
+Available commands:
+- `/clear` — clears YOUR context for the current channel or DM
+- `/clear me` — equivalent to `/clear` (explicit target)
+
 ## Agentic Workflows
 
 When routing to agentic tasks (e.g., external agents like OpenHands):
