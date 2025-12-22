@@ -121,7 +121,7 @@ export class MessageHandler {
       // Add to memory (for in-session use)
       await this.memoryManager.addMessage(channelId, userMessage);
 
-      // Get message history for context
+      // Get message history for context (in-memory)
       const conversation = this.memoryManager.getConversationContext(channelId);
       const composedPrompt = this.promptManager.composeChatPrompt(
         channelId,
@@ -163,9 +163,11 @@ export class MessageHandler {
         console.log('Action plan: direct response (planner skipped)');
       } else {
         // LLM-based planning for other tiers
+        // FIX: Provide loaded file context (previous messages) to planner,
+        // and let planner add the current user message itself.
         plan = await this.planner.planActionsWithRetry(
           message.content,
-          composedPrompt.messages,
+          fileContext,
           personaId
         );
         console.log(`Action plan: ${plan.actions.map(a => a.type).join(' → ')}`);
@@ -239,20 +241,21 @@ export class MessageHandler {
       }).catch(() => {});
 
       // RESPONDER STEP: Generate final response WITH METADATA
-      // For INSTANT tier, use minimal prompt to save tokens
+      // Build final LLM payload with strict ordering:
+      // messages = [ ...system/persona, ...loadedContext, { user } ]
       let finalPrompt: Message[];
       if (routingDecision.tier === 'INSTANT') {
-        // Minimal prompt for INSTANT tier (no concise guidance needed - already minimal)
         const minimalComposed = this.promptManager.composeMinimalPromptForInstant(
           channelId,
           userMessage,
           personaId
         );
-        finalPrompt = minimalComposed.messages;
-        console.log(`💰 INSTANT tier: using minimal prompt (${finalPrompt.length} messages)`);
+        const systemBase = minimalComposed.messages.filter(m => m.role === 'system');
+        finalPrompt = [...systemBase, ...fileContext, userMessage];
+        console.log(`💰 INSTANT tier: using minimal prompt with file context (${finalPrompt.length} messages)`);
       } else {
-        // Full prompt for other tiers (concise guidance will be added in generateFinalResponseWithMetadata)
-        finalPrompt = composedPrompt.messages;
+        const systemBase = composedPrompt.messages.filter(m => m.role === 'system');
+        finalPrompt = [...systemBase, ...fileContext, userMessage];
       }
 
       const responseResult = await this.generateFinalResponseWithMetadata(
