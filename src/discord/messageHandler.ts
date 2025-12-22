@@ -188,7 +188,8 @@ export class MessageHandler {
         
         if (routingDecision.tier === 'INSTANT') {
           // Synthetic planning for INSTANT tier (no LLM call)
-          plan = this.planner.createSyntheticPlanForInstant();
+          // Pass the message content for heuristic-based tool detection
+          plan = this.planner.createSyntheticPlanForInstant(message.content);
           console.log(`Action plan: INSTANT tier (synthetic, no LLM call)`);
         } else if (!plannerNeeded) {
           plan = {

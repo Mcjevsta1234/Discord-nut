@@ -31,13 +31,98 @@ export class Planner {
 
   /**
    * Create synthetic plan for INSTANT tier (no LLM call)
-   * Saves tokens by generating plan deterministically
+   * Uses heuristic-based tool detection to avoid token cost
+   * Falls back to chat for unknown patterns
    */
-  createSyntheticPlanForInstant(): ActionPlan {
+  createSyntheticPlanForInstant(userMessage?: string): ActionPlan {
+    // If no message provided, just return chat
+    if (!userMessage) {
+      return {
+        actions: [{ type: 'chat' }],
+        reasoning: 'Conversational response',
+        metadata: undefined,
+        isFallback: false,
+      };
+    }
+
+    // Heuristic-based tool detection (no LLM cost)
+    const normalized = userMessage.toLowerCase();
+
+    // Math detection
+    const mathPattern = /\d+\s*[\+\-\*\/]\s*\d+/;
+    if (mathPattern.test(userMessage) || /(calculate|math|sum|multiply|divide|what's|what is)\s+\d+/.test(normalized)) {
+      return {
+        actions: [{ type: 'tool', toolName: 'calculate', toolParams: { expression: userMessage } }],
+        reasoning: 'Math calculation detected',
+        metadata: undefined,
+        isFallback: false,
+      };
+    }
+
+    // Currency conversion
+    if (/(£|€|¥|\$|usd|eur|gbp|jpy|cad|aud|convert|exchange)\s+\d+/.test(normalized) || /\d+\s*(£|€|¥|\$)/.test(userMessage)) {
+      // Extract currency and amount if possible
+      const amountMatch = userMessage.match(/(\d+(?:\.\d+)?)\s*([£€¥\$]|usd|eur|gbp|jpy|cad|aud)/i);
+      const targetMatch = userMessage.match(/(?:to|in|as)\s+([£€¥\$]|usd|eur|gbp|jpy|cad|aud)/i);
+      
+      if (amountMatch) {
+        return {
+          actions: [{ type: 'tool', toolName: 'convert_currency', toolParams: { query: userMessage } }],
+          reasoning: 'Currency conversion detected',
+          metadata: undefined,
+          isFallback: false,
+        };
+      }
+    }
+
+    // Unit conversion
+    if (/(ft|meters?|km|miles?|cm|inches?|kg|lbs?|pounds?|celsius|fahrenheit|kelvin|convert|conversion)\s+(?:to|in)/.test(normalized)) {
+      return {
+        actions: [{ type: 'tool', toolName: 'convert_units', toolParams: { query: userMessage } }],
+        reasoning: 'Unit conversion detected',
+        metadata: undefined,
+        isFallback: false,
+      };
+    }
+
+    // Time queries
+    if (/(what time|current time|what's the time|time zone|timezone|utc offset)/.test(normalized)) {
+      return {
+        actions: [{ type: 'tool', toolName: 'get_time', toolParams: {} }],
+        reasoning: 'Time query detected',
+        metadata: undefined,
+        isFallback: false,
+      };
+    }
+
+    // Minecraft server status
+    if (/(minecraft|server status|server up|server down|are the servers|how are the servers)/.test(normalized)) {
+      return {
+        actions: [{ type: 'tool', toolName: 'minecraft_status', toolParams: {} }],
+        reasoning: 'Minecraft server status query detected',
+        metadata: undefined,
+        isFallback: false,
+      };
+    }
+
+    // URL fetching
+    if (/(https?:\/\/|www\.)/.test(userMessage)) {
+      const urlMatch = userMessage.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/);
+      if (urlMatch) {
+        return {
+          actions: [{ type: 'tool', toolName: 'fetch_url', toolParams: { url: urlMatch[0] } }],
+          reasoning: 'URL detected',
+          metadata: undefined,
+          isFallback: false,
+        };
+      }
+    }
+
+    // Default to chat for everything else
     return {
       actions: [{ type: 'chat' }],
-      reasoning: 'Conversational response', // Synthetic, not LLM-generated
-      metadata: undefined, // No LLM call = no metadata
+      reasoning: 'Conversational response',
+      metadata: undefined,
       isFallback: false,
     };
   }
