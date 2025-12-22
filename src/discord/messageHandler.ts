@@ -884,7 +884,7 @@ export class MessageHandler {
         .map((r: any, i: number) => `Result ${i + 1}:\n${r.content}`)
         .join('\n\n');
 
-      // Create response prompt with tool context
+      // Create response prompt with tool context - FORCE conversational response
       const responsePrompt: Message[] = [
         ...conversationMessages,
         {
@@ -893,7 +893,21 @@ export class MessageHandler {
         },
         {
           role: 'user',
-          content: `Based on the results above, respond naturally and conversationally to the user's request: "${userQuery}". Be friendly and engaging, don't just repeat the results. Include the information from the results in your response in a natural way.`,
+          content: `IMPORTANT: You MUST respond with a conversational message that includes the information from the tool results above.
+
+The user asked: "${userQuery}"
+
+Your response should:
+1. Use the exact information from the tool results
+2. Add friendly conversational text around it
+3. Match your persona's personality
+4. NEVER just return the raw tool output alone
+
+Example for time query:
+❌ BAD: "2025-12-22 14:30:00 UTC"
+✅ GOOD: "Hey! It's 2:30 PM UTC right now. What's up? ☕"
+
+Now respond to the user's request conversationally:`,
         },
       ];
 
