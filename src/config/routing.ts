@@ -165,12 +165,12 @@ export const routingConfig: RoutingConfig = {
   tiers: {
     [ModelTier.INSTANT]: {
       tier: ModelTier.INSTANT,
-      modelId: getEnv('MODEL_INSTANT', 'xiaomi/mimo-v2-flash:free'),
+      modelId: getEnv('MODEL_INSTANT', 'google/gemini-2.0-flash-exp:free'),
       maxPromptTokens: getEnvNumber('MODEL_INSTANT_MAX_PROMPT', 4000),
       maxOutputTokens: getEnvNumber('MODEL_INSTANT_MAX_OUTPUT', 256),
       costTier: 'free',
-      provider: 'xiaomi',
-      supportsTools: false, // INSTANT tier for greetings/short chat only
+      provider: 'google',
+      supportsTools: true, // Gemini has excellent tool calling support
       supportsCaching: false,
       inputPricePerMillionTokens: getEnvFloat('MODEL_INSTANT_INPUT_PRICE', 0),
       outputPricePerMillionTokens: getEnvFloat('MODEL_INSTANT_OUTPUT_PRICE', 0),
