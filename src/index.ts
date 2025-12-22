@@ -15,11 +15,20 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 /**
- * Detect if we should run in console mode
+ * Detect if we should run in hybrid mode (Discord + Console)
+ */
+function shouldRunHybridMode(): boolean {
+  const args = process.argv.slice(2);
+  return args.includes('--hybrid') || args.includes('--both') ||
+         process.env.HYBRID_MODE === 'true' || process.env.HYBRID_MODE === '1';
+}
+
+/**
+ * Detect if we should run in console-only mode
  * Checks for:
  * 1. --console or -c command line flag
  * 2. CONSOLE_MODE=true environment variable
- * 3. Running in interactive TTY with stdin
+ * 3. Missing Discord token
  */
 function shouldRunConsoleMode(): boolean {
   // Check command line arguments
@@ -43,9 +52,12 @@ function shouldRunConsoleMode(): boolean {
 }
 
 async function main() {
+  const isHybridMode = shouldRunHybridMode();
   const isConsoleMode = shouldRunConsoleMode();
 
-  if (isConsoleMode) {
+  if (isHybridMode) {
+    console.log('🤖 Discord Bot - Hybrid Mode (Discord + Console)');
+  } else if (isConsoleMode) {
     console.log('🤖 Discord Bot - Console Mode');
   } else {
     console.log('🤖 Discord Bot Starting...');
@@ -65,8 +77,27 @@ async function main() {
   }
 
   try {
-    if (isConsoleMode) {
-      // Console mode
+    if (isHybridMode) {
+      // Hybrid mode: Run both Discord bot AND console chat
+      console.log('\n🌐 Starting Discord bot...');
+      const bot = new DiscordBot();
+      await bot.start();
+
+      console.log('\n💬 Starting console interface...');
+      const consoleChat = new ConsoleChat();
+      await consoleChat.start();
+
+      const shutdown = async (signal: string) => {
+        console.log(`\n${signal} received, shutting down gracefully...`);
+        consoleChat.stop();
+        await bot.stop();
+        process.exit(0);
+      };
+
+      process.on('SIGINT', () => shutdown('SIGINT'));
+      process.on('SIGTERM', () => shutdown('SIGTERM'));
+    } else if (isConsoleMode) {
+      // Console-only mode
       const consoleChat = new ConsoleChat();
       await consoleChat.start();
 
@@ -79,7 +110,7 @@ async function main() {
       process.on('SIGINT', () => shutdown('SIGINT'));
       process.on('SIGTERM', () => shutdown('SIGTERM'));
     } else {
-      // Discord bot mode
+      // Discord-only mode
       const bot = new DiscordBot();
       await bot.start();
 

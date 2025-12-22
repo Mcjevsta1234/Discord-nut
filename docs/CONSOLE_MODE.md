@@ -15,7 +15,36 @@ The Discord Bot includes a **Console Chat Mode** for debugging, testing, and sta
 
 ## Starting Console Mode
 
-### Method 1: Command Line Flag (Recommended for Hosting Platforms)
+### Hybrid Mode (Discord + Console Simultaneously) 🌟
+
+**Best option if you want both Discord AND console access:**
+
+```bash
+# Development mode
+npm run dev -- --hybrid
+
+# Production mode
+npm start -- --hybrid
+node dist/index.js --hybrid
+node dist/index.js --both  # alternative flag
+```
+
+**Pterodactyl Example (Hybrid):**
+```
+node dist/index.js --hybrid
+```
+
+**Environment Variable:**
+```bash
+HYBRID_MODE=true npm start
+```
+
+With hybrid mode:
+- Bot connects to Discord servers (responds to @mentions and messages)
+- Console interface accepts commands (`/persona`, `/help`, etc.)
+- Both work at the same time from the same process
+
+### Method 1: Command Line Flag (Console-Only)
 
 Works with **any** hosting environment including Pterodactyl, Docker, PM2, systemd, etc:
 
@@ -31,8 +60,7 @@ node dist/index.js --console
 node dist/index.js -c  # short flag
 ```
 
-**Pterodactyl Example:**
-Set the startup command to:
+**Pterodactyl Example (Console-only):**
 ```
 node dist/index.js --console
 ```

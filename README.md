@@ -97,9 +97,35 @@ npm start
 
 ### Console Chat Mode
 
-Chat with the bot directly in your terminal without Discord. The bot automatically detects console mode in several ways:
+Chat with the bot directly in your terminal. The bot supports three modes:
 
-#### Option 1: Command Line Flag (Recommended for Pterodactyl/any environment)
+#### Mode 1: Hybrid Mode (Discord + Console) 🌟
+Run Discord bot AND accept console commands simultaneously:
+
+```bash
+# Development
+npm run dev -- --hybrid
+
+# Production
+npm start -- --hybrid
+# or
+node dist/index.js --hybrid
+```
+
+**Pterodactyl Example (Hybrid):**
+```bash
+node dist/index.js --hybrid
+```
+
+With hybrid mode, the bot:
+- ✅ Connects to Discord servers (responds to mentions/messages)
+- ✅ Accepts console commands (type `/persona emma`, etc.)
+- ✅ Both interfaces work simultaneously
+
+#### Mode 2: Console-Only Mode
+Run without Discord connection:
+
+**Option 1: Command Line Flag**
 ```bash
 # Development
 npm run dev -- --console
@@ -110,20 +136,20 @@ npm start -- --console
 node dist/index.js --console
 ```
 
-#### Option 2: Environment Variable
+**Option 2: Environment Variable**
 ```bash
 # Set in .env or export
 CONSOLE_MODE=true npm start
 ```
 
-#### Option 3: No Discord Token
+**Option 3: No Discord Token**
 If `DISCORD_TOKEN` is not set, the bot automatically starts in console mode:
 ```bash
 # Just remove/comment out DISCORD_TOKEN in .env
 npm start
 ```
 
-#### Option 4: NPM Scripts (Legacy)
+**Option 4: NPM Scripts (Legacy)**
 ```bash
 # Development mode
 npm run console
