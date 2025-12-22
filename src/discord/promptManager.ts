@@ -6,6 +6,7 @@ import {
   defaultPersonaId,
   isValidPersonaId,
   getAllPersonaIds,
+  resolvePersonaId,
 } from '../personas.config';
 
 type OverrideMode = 'replace' | 'append' | 'clear';
@@ -56,7 +57,8 @@ export class PromptManager {
       return false;
     }
     const override = this.getOverrides(channelId);
-    override.personaId = personaId.toLowerCase();
+    // Resolve aliases (e.g., "emma" -> "mimi")
+    override.personaId = resolvePersonaId(personaId);
     this.overrides.set(channelId, override);
     return true;
   }

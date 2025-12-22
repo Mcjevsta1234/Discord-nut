@@ -107,8 +107,21 @@ CRITICAL - Information Honesty:
 
 export const defaultPersonaId = 'mimi';
 
+/**
+ * Persona aliases - map old names or alternate names to canonical persona IDs
+ */
+const personaAliases: Record<string, string> = {
+  'emma': 'mimi', // Backwards compatibility: emma is now mimi
+};
+
+export function resolvePersonaId(id: string): string {
+  const normalizedId = id.toLowerCase();
+  return personaAliases[normalizedId] || normalizedId;
+}
+
 export function getPersona(id: string): Persona | undefined {
-  const persona = personas[id.toLowerCase()];
+  const resolvedId = resolvePersonaId(id);
+  const persona = personas[resolvedId];
   
   // Log warning if persona still has model field
   if (persona && persona.model) {
@@ -119,9 +132,11 @@ export function getPersona(id: string): Persona | undefined {
 }
 
 export function getAllPersonaIds(): string[] {
-  return Object.keys(personas);
+  // Return canonical IDs, plus aliases for detection purposes
+  return [...Object.keys(personas), ...Object.keys(personaAliases)];
 }
 
 export function isValidPersonaId(id: string): boolean {
-  return id.toLowerCase() in personas;
+  const normalizedId = id.toLowerCase();
+  return normalizedId in personas || normalizedId in personaAliases;
 }
