@@ -208,7 +208,7 @@ export class MessageHandler {
       // For INSTANT tier, use minimal prompt to save tokens
       let finalPrompt: Message[];
       if (routingDecision.tier === 'INSTANT') {
-        // Minimal prompt for INSTANT tier
+        // Minimal prompt for INSTANT tier (no concise guidance needed - already minimal)
         const minimalComposed = this.promptManager.composeMinimalPromptForInstant(
           channelId,
           userMessage,
@@ -217,7 +217,7 @@ export class MessageHandler {
         finalPrompt = minimalComposed.messages;
         console.log(`💰 INSTANT tier: using minimal prompt (${finalPrompt.length} messages)`);
       } else {
-        // Full prompt for other tiers
+        // Full prompt for other tiers (concise guidance will be added in generateFinalResponseWithMetadata)
         finalPrompt = composedPrompt.messages;
       }
 
@@ -225,7 +225,8 @@ export class MessageHandler {
         message.content,
         executionResult,
         finalPrompt,
-        routingDecision.modelId // Use routed model
+        routingDecision.modelId, // Use routed model
+        routingDecision.tier // Pass tier to control concise guidance
       );
 
       let finalResponse = responseResult.content;
@@ -243,7 +244,8 @@ export class MessageHandler {
           message.content,
           executionResult,
           composedPrompt.messages,
-          retryDecision.modelId
+          retryDecision.modelId,
+          retryDecision.tier // Pass tier for concise guidance
         );
         
         finalResponse = retryResult.content;
@@ -344,6 +346,32 @@ export class MessageHandler {
     }
     
     return false;
+  }
+
+  /**
+   * Add concise output guidance to messages (for non-INSTANT tiers)
+   * Reduces completion tokens without increasing prompt tokens significantly
+   */
+  private addConciseGuidance(messages: Message[]): Message[] {
+    // Token-efficient instruction (only 27 tokens)
+    const guidanceMessage: Message = {
+      role: 'system',
+      content: 'Be concise. Avoid large code/HTML blocks inline. Summarize when files will be attached. No placeholders or "continued..." messages. Complete answers only.'
+    };
+    
+    // Insert guidance before the last user message for better adherence
+    const result = [...messages];
+    const lastUserIndex = result.map(m => m.role).lastIndexOf('user');
+    
+    if (lastUserIndex > 0) {
+      // Insert before last user message
+      result.splice(lastUserIndex, 0, guidanceMessage);
+    } else {
+      // Fallback: add at the end
+      result.push(guidanceMessage);
+    }
+    
+    return result;
   }
 
   /**
@@ -502,7 +530,8 @@ export class MessageHandler {
     userQuery: string,
     executionResult: any,
     conversationMessages: Message[],
-    model: string
+    model: string,
+    tier?: string
   ): Promise<{ content: string; metadata?: LLMResponseMetadata }> {
     try {
       // Check if there are any tool results to summarize
@@ -512,7 +541,11 @@ export class MessageHandler {
 
       if (!hasToolResults) {
         // No tool results, just do normal chat WITH METADATA
-        const response = await this.aiService.chatCompletionWithMetadata(conversationMessages, model);
+        // Add concise output guidance for non-INSTANT tiers only
+        const messagesWithGuidance = (tier && tier !== 'INSTANT') 
+          ? this.addConciseGuidance(conversationMessages)
+          : conversationMessages;
+        const response = await this.aiService.chatCompletionWithMetadata(messagesWithGuidance, model);
         return { content: response.content, metadata: response.metadata };
       }
 
@@ -535,7 +568,11 @@ export class MessageHandler {
         },
       ];
 
-      const response = await this.aiService.chatCompletionWithMetadata(responsePrompt, model);
+      // Add concise output guidance for non-INSTANT tiers only
+      const guidedPrompt = (tier && tier !== 'INSTANT')
+        ? this.addConciseGuidance(responsePrompt)
+        : responsePrompt;
+      const response = await this.aiService.chatCompletionWithMetadata(guidedPrompt, model);
 
       // Ensure valid response
       if (!response.content || response.content.trim().length === 0) {
@@ -1119,7 +1156,8 @@ export class MessageHandler {
           context.userContent,
           executionResult,
           composedPrompt.messages,
-          routingDecision.modelId // Use routed model
+          routingDecision.modelId, // Use routed model
+          routingDecision.tier // Pass tier for concise guidance
         );
 
         const finalResponse = responseResult.content;
