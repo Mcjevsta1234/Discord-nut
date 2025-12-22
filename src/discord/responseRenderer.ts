@@ -1017,7 +1017,75 @@ export class ResponseRenderer {
       return { attachments, renameMap: {} };
     }
 
-    // Group by extension
+    // SPECIAL CASE: Merge HTML + CSS + JS into single HTML file
+    const htmlFile = attachments.find(f => f.filename.endsWith('.html'));
+    const cssFiles = attachments.filter(f => f.filename.endsWith('.css'));
+    const jsFiles = attachments.filter(f => f.filename.endsWith('.js') || f.filename.endsWith('.ts'));
+    
+    if (htmlFile && (cssFiles.length > 0 || jsFiles.length > 0)) {
+      const renameMap: Record<string, string> = {};
+      let htmlContent = htmlFile.content;
+      
+      // Inject CSS as <style> tags
+      if (cssFiles.length > 0) {
+        const combinedCSS = cssFiles.map(f => f.content).join('\n\n');
+        const styleTag = `<style>\n${combinedCSS}\n</style>`;
+        
+        // Try to insert before </head>, or after <head>, or at the start
+        if (htmlContent.includes('</head>')) {
+          htmlContent = htmlContent.replace('</head>', `${styleTag}\n</head>`);
+        } else if (htmlContent.includes('<head>')) {
+          htmlContent = htmlContent.replace('<head>', `<head>\n${styleTag}`);
+        } else if (htmlContent.includes('<html>')) {
+          htmlContent = htmlContent.replace('<html>', `<html>\n<head>\n${styleTag}\n</head>`);
+        } else {
+          htmlContent = styleTag + '\n' + htmlContent;
+        }
+        
+        // Mark CSS files as merged
+        cssFiles.forEach(f => renameMap[f.filename] = htmlFile.filename);
+      }
+      
+      // Inject JS as <script> tags
+      if (jsFiles.length > 0) {
+        const combinedJS = jsFiles.map(f => f.content).join('\n\n');
+        const scriptTag = `<script>\n${combinedJS}\n</script>`;
+        
+        // Try to insert before </body>, or at the end
+        if (htmlContent.includes('</body>')) {
+          htmlContent = htmlContent.replace('</body>', `${scriptTag}\n</body>`);
+        } else if (htmlContent.includes('</html>')) {
+          htmlContent = htmlContent.replace('</html>', `${scriptTag}\n</html>`);
+        } else {
+          htmlContent = htmlContent + '\n' + scriptTag;
+        }
+        
+        // Mark JS files as merged
+        jsFiles.forEach(f => renameMap[f.filename] = htmlFile.filename);
+      }
+      
+      // Return single consolidated HTML file
+      const consolidated = [{
+        content: htmlContent,
+        filename: 'index.html',
+        language: 'html',
+      }];
+      
+      // Add any remaining non-HTML/CSS/JS files
+      const otherFiles = attachments.filter(f => 
+        !f.filename.endsWith('.html') && 
+        !f.filename.endsWith('.css') && 
+        !f.filename.endsWith('.js') &&
+        !f.filename.endsWith('.ts')
+      );
+      
+      consolidated.push(...otherFiles);
+      renameMap[htmlFile.filename] = 'index.html';
+      
+      return { attachments: consolidated, renameMap };
+    }
+
+    // Group by extension for other files
     const grouped = new Map<string, typeof attachments>();
     for (const file of attachments) {
       const ext = file.filename.split('.').pop()?.toLowerCase() || 'txt';
@@ -1063,8 +1131,6 @@ export class ResponseRenderer {
     }
 
     return { attachments: consolidated, renameMap };
-
-
   }
 
   /**
