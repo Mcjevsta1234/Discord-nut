@@ -1,18 +1,71 @@
 # Console Chat Mode
 
-The Discord Bot now includes a **Console Chat Mode** for debugging and testing the AI capabilities without needing a Discord server connection.
+The Discord Bot includes a **Console Chat Mode** for debugging, testing, and standalone deployments without Discord.
 
 ## Features
 
 ✅ **Interactive Chat Interface** - Chat directly with the bot in your terminal  
-✅ **Persona Support** - Test different personas (Emma, Alex, Max)  
+✅ **Persona Support** - Test different personas (Emma, Steve, Wiz)  
 ✅ **Full AI Pipeline** - Uses the same routing, planning, and execution as Discord mode  
 ✅ **Action Planning** - See the bot's action plans and execution results  
 ✅ **Conversation History** - Maintains context throughout the session  
 ✅ **Chat Logging** - All conversations are logged (same as Discord mode)  
 ✅ **Tool Integration** - All MCP tools are available  
+✅ **Universal Compatibility** - Works in Pterodactyl, Docker, standard terminals, etc.
 
 ## Starting Console Mode
+
+### Method 1: Command Line Flag (Recommended for Hosting Platforms)
+
+Works with **any** hosting environment including Pterodactyl, Docker, PM2, systemd, etc:
+
+```bash
+# Development mode
+npm run dev -- --console
+# or
+tsx src/index.ts --console
+
+# Production mode (any of these work)
+npm start -- --console
+node dist/index.js --console
+node dist/index.js -c  # short flag
+```
+
+**Pterodactyl Example:**
+Set the startup command to:
+```
+node dist/index.js --console
+```
+
+### Method 2: Environment Variable
+
+Set `CONSOLE_MODE=true` in your `.env` file or environment:
+
+```bash
+# In .env file
+CONSOLE_MODE=true
+
+# Or as environment variable
+CONSOLE_MODE=true npm start
+```
+
+**Docker Example:**
+```dockerfile
+ENV CONSOLE_MODE=true
+CMD ["node", "dist/index.js"]
+```
+
+### Method 3: Automatic Detection
+
+Remove or comment out `DISCORD_TOKEN` in your `.env`:
+
+```bash
+# DISCORD_TOKEN=your_token_here  # commented out
+npm start
+# Automatically detects missing token and starts console mode
+```
+
+### Method 4: NPM Scripts (Legacy, requires npm)
 
 ```bash
 # Development mode (with hot reload)

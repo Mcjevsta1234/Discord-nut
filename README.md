@@ -95,10 +95,35 @@ npm run build
 npm start
 ```
 
-### Console Chat Mode (Debugging)
+### Console Chat Mode
 
-For development and testing, you can chat with the bot directly in your console without Discord:
+Chat with the bot directly in your terminal without Discord. The bot automatically detects console mode in several ways:
 
+#### Option 1: Command Line Flag (Recommended for Pterodactyl/any environment)
+```bash
+# Development
+npm run dev -- --console
+
+# Production
+npm start -- --console
+# or
+node dist/index.js --console
+```
+
+#### Option 2: Environment Variable
+```bash
+# Set in .env or export
+CONSOLE_MODE=true npm start
+```
+
+#### Option 3: No Discord Token
+If `DISCORD_TOKEN` is not set, the bot automatically starts in console mode:
+```bash
+# Just remove/comment out DISCORD_TOKEN in .env
+npm start
+```
+
+#### Option 4: NPM Scripts (Legacy)
 ```bash
 # Development mode
 npm run console
@@ -110,9 +135,10 @@ npm run console:build
 Console mode provides:
 - ✅ Interactive chat interface in your terminal
 - ✅ Full AI pipeline (routing, planning, tool execution)
-- ✅ Persona support (Emma, Alex, Max)
+- ✅ Persona support (Emma, Steve, Wiz)
 - ✅ Action plan visibility for debugging
 - ✅ Conversation history management
+- ✅ Works in Pterodactyl, Docker, and any hosting environment
 
 See [docs/CONSOLE_MODE.md](docs/CONSOLE_MODE.md) for detailed usage and commands.
 
