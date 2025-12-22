@@ -41,29 +41,23 @@ export class ProgressTracker {
   private updates: ProgressUpdate[] = [];
   private updateInterval?: NodeJS.Timeout;
   private spinnerIndex = 0;
-  // Fun snake game animation 🐍
-  private spinnerFrames = [
-    '🐍💨       🍎',
-    ' 🐍💨      🍎',
-    '  🐍💨     🍎',
-    '   🐍💨    🍎',
-    '    🐍💨   🍎',
-    '     🐍💨  🍎',
-    '      🐍💨 🍎',
-    '       🐍💨🍎',
-    '       🐍🍎💨',
-    '      🐍🍎 💨',
-    '     🐍🍎  💨',
-    '    🐍🍎   💨',
-    '   🐍🍎    💨',
-    '  🐍🍎     💨',
-    ' 🐍🍎      💨',
-    '🐍🍎       💨'
-  ];
+  // Simple spinner loader
+  private spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
   private lastUpdateTime = 0;
   private minUpdateInterval = 1500; // Discord rate limit: max 5 edits per 5 seconds = 1 per second minimum
   private isClosed = false;
   private pendingUpdate = false;
+  
+  // Snake game state
+  private snakeX = 5;
+  private snakeY = 3;
+  private snakeBody: Array<{x: number, y: number}> = [{x: 5, y: 3}, {x: 4, y: 3}, {x: 3, y: 3}];
+  private appleX = 12;
+  private appleY = 3;
+  private direction = 1; // 0=up, 1=right, 2=down, 3=left
+  private score = 0;
+  private readonly gameWidth = 20;
+  private readonly gameHeight = 7;
 
   constructor(message: DiscordMessage, initialEmbed: EmbedBuilder) {
     this.message = message;
@@ -98,6 +92,7 @@ export class ProgressTracker {
       try {
         this.pendingUpdate = true;
         this.spinnerIndex = (this.spinnerIndex + 1) % this.spinnerFrames.length;
+        this.updateSnakeGame(); // Update snake game state
         await this.updateDisplay();
         this.lastUpdateTime = Date.now();
       } catch (error) {
@@ -211,7 +206,90 @@ export class ProgressTracker {
       lines.push(line);
     }
 
+    // Add snake game at the bottom (only if still processing)
+    if (latestUpdate.stage !== 'complete' && latestUpdate.stage !== 'error') {
+      lines.push('\n' + this.renderSnakeGame());
+    }
+
     return lines.join('\n');
+  }
+
+  /**
+   * Update snake game state
+   */
+  private updateSnakeGame(): void {
+    // Move snake head
+    const head = { ...this.snakeBody[0] };
+    
+    switch (this.direction) {
+      case 0: head.y--; break; // up
+      case 1: head.x++; break; // right
+      case 2: head.y++; break; // down
+      case 3: head.x--; break; // left
+    }
+    
+    // Wrap around walls
+    if (head.x < 0) head.x = this.gameWidth - 1;
+    if (head.x >= this.gameWidth) head.x = 0;
+    if (head.y < 0) head.y = this.gameHeight - 1;
+    if (head.y >= this.gameHeight) head.y = 0;
+    
+    // Add new head
+    this.snakeBody.unshift(head);
+    
+    // Check if ate apple
+    if (head.x === this.appleX && head.y === this.appleY) {
+      this.score++;
+      // Spawn new apple
+      this.appleX = Math.floor(Math.random() * this.gameWidth);
+      this.appleY = Math.floor(Math.random() * this.gameHeight);
+    } else {
+      // Remove tail if didn't eat apple
+      this.snakeBody.pop();
+    }
+    
+    // Randomly change direction sometimes for variety
+    if (Math.random() < 0.3) {
+      this.direction = (this.direction + (Math.random() < 0.5 ? 1 : -1) + 4) % 4;
+    }
+  }
+
+  /**
+   * Render snake game as ASCII art in a box
+   */
+  private renderSnakeGame(): string {
+    const lines: string[] = [];
+    
+    // Top border with score
+    lines.push(`╔${'═'.repeat(this.gameWidth)}╗ Score: ${this.score}`);
+    
+    // Game board
+    for (let y = 0; y < this.gameHeight; y++) {
+      let row = '║';
+      for (let x = 0; x < this.gameWidth; x++) {
+        // Check if this position has snake body
+        const isSnakeHead = this.snakeBody[0].x === x && this.snakeBody[0].y === y;
+        const isSnakeBody = this.snakeBody.slice(1).some(s => s.x === x && s.y === y);
+        const isApple = this.appleX === x && this.appleY === y;
+        
+        if (isSnakeHead) {
+          row += '◉';
+        } else if (isSnakeBody) {
+          row += '●';
+        } else if (isApple) {
+          row += '◆';
+        } else {
+          row += ' ';
+        }
+      }
+      row += '║';
+      lines.push(row);
+    }
+    
+    // Bottom border
+    lines.push(`╚${'═'.repeat(this.gameWidth)}╝`);
+    
+    return '```\n' + lines.join('\n') + '\n```';
   }
 
   /**
@@ -808,8 +886,8 @@ export class ResponseRenderer {
   static createProgressTracker(message: DiscordMessage, userQuery: string): ProgressTracker {
     const embed = new EmbedBuilder()
       .setColor(0xffa500)
-      .setTitle('🐍 Processing Your Request')
-      .setDescription(`**Query:** ${this.truncate(userQuery, 200)}\n\n🐍💨       🍎 Starting...`)
+      .setTitle('⚡ Processing Your Request')
+      .setDescription(`**Query:** ${this.truncate(userQuery, 200)}\n\n⠋ Starting...`)
       .setTimestamp();
     
     return new ProgressTracker(message, embed);
