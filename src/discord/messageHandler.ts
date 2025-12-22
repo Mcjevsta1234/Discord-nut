@@ -2,6 +2,7 @@ import { Message as DiscordMessage, Client, AttachmentBuilder, EmbedBuilder, Act
 import { OpenRouterService, Message } from '../ai/openRouterService';
 import { ImageService } from '../ai/imageService';
 import { MemoryManager } from '../ai/memoryManager';
+import { FileContextManager } from '../ai/fileContextManager';
 import { PromptManager } from './promptManager';
 import { Planner, ActionPlan } from '../ai/planner';
 import { ActionExecutor } from '../ai/actionExecutor';
@@ -23,6 +24,7 @@ export class MessageHandler {
   private aiService: OpenRouterService;
   private imageService: ImageService;
   private memoryManager: MemoryManager;
+  private fileContextManager: FileContextManager;
   private promptManager: PromptManager;
   private planner: Planner;
   private executor: ActionExecutor;
@@ -39,6 +41,7 @@ export class MessageHandler {
     this.aiService = aiService;
     this.imageService = new ImageService();
     this.memoryManager = memoryManager;
+    this.fileContextManager = new FileContextManager();
     this.promptManager = promptManager;
     this.planner = new Planner(aiService);
     this.executor = new ActionExecutor(aiService);
@@ -80,6 +83,8 @@ export class MessageHandler {
     try {
       // Get channel context
       const channelId = message.channelId;
+      const userId = message.author.id;
+      const guildId = message.guildId || undefined;
 
       // Determine which persona to use
       let personaId: string | undefined;
@@ -102,13 +107,18 @@ export class MessageHandler {
       }
       // 3. Use channel default (handled in composeChatPrompt)
 
+      // LOAD CONTEXT: Load isolated conversation history from file storage
+      // Guilds: guildId + channelId + userId, DMs: userId only
+      const fileContext = await this.fileContextManager.loadContext(userId, channelId, guildId);
+      console.log(`📂 Loaded file context: ${fileContext.length} messages for user ${userId}`);
+
       // Build user message
       const userMessage: Message = {
         role: 'user',
         content: `${message.author.username}: ${message.content}`,
       };
 
-      // Add to memory
+      // Add to memory (for in-session use)
       await this.memoryManager.addMessage(channelId, userMessage);
 
       // Get message history for context
@@ -311,6 +321,22 @@ export class MessageHandler {
         rendered,
         workingMessage
       );
+
+      // PERSIST CONTEXT: Append user message + final response to file storage
+      // Only store plain text, not embeds/metadata (isolation per user + channel/DM)
+      if (sentMessage && finalResponse && !finalResponse.includes('encountered an error')) {
+        try {
+          const cleanResponse: Message = {
+            role: 'assistant',
+            content: finalResponse,
+          };
+          // Store user message and assistant response in isolated context
+          await this.fileContextManager.appendMessages(userId, [userMessage, cleanResponse], channelId, guildId);
+          console.log(`✓ Persisted context: user + response for user ${userId}`);
+        } catch (error) {
+          console.error('Failed to persist context to file:', error);
+        }
+      }
 
       // Track context
       if (sentMessage && personaId) {
