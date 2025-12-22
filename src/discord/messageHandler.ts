@@ -109,6 +109,7 @@ export class MessageHandler {
       );
       if (detectedPersona) {
         personaId = detectedPersona;
+        console.log(`🎭 Detected persona from message: ${personaId}`);
       }
       // 2. If replying to bot, continue with same persona
       else if (message.reference?.messageId) {
@@ -117,9 +118,14 @@ export class MessageHandler {
         );
         if (referencedPersona) {
           personaId = referencedPersona;
+          console.log(`🎭 Using persona from referenced message: ${personaId}`);
         }
       }
       // 3. Use channel default (handled in composeChatPrompt)
+      
+      if (!personaId) {
+        console.log(`🎭 No persona detected, will use channel default`);
+      }
 
       // LOAD CONTEXT: Load isolated conversation history from file storage
       // Guilds: guildId + channelId + userId, DMs: userId only

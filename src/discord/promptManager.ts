@@ -84,11 +84,13 @@ export class PromptManager {
       if (contentLower.startsWith(`hey ${personaId}`) || 
           contentLower.startsWith(`${personaId} `) ||
           contentLower === personaId) {
+        console.log(`✓ Persona detected: ${personaId} from message: "${content.substring(0, 50)}..."`);
         return personaId;
       }
       
       // Pattern 2: Comma-separated address like "emma, how are you" or "emma,"
       if (contentLower.startsWith(`${personaId},`)) {
+        console.log(`✓ Persona detected: ${personaId} from message: "${content.substring(0, 50)}..."`);
         return personaId;
       }
     }

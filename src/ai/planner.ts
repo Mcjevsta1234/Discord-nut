@@ -95,8 +95,8 @@ export class Planner {
       };
     }
 
-    // Minecraft server status
-    if (/(minecraft|server status|server up|server down|are the servers|how are the servers)/.test(normalized)) {
+    // Minecraft server status - broad detection
+    if (/(minecraft|\bmc\b|server status|server up|server down|are the servers|how are the servers|network status|network up|servers? online|servers? down)/.test(normalized)) {
       return {
         actions: [{ type: 'tool', toolName: 'minecraft_status', toolParams: {} }],
         reasoning: 'Minecraft server status query detected',
@@ -156,7 +156,7 @@ Detection rules - USE TOOLS AGGRESSIVELY:
 - Time queries (e.g., "what time is it", "current time") → use "get_time" tool
 - Web searches ("search for", "find", "look up") → use "searxng_search" tool
 - URLs/links in message → use "fetch_url" tool
-- Minecraft server status/network queries (e.g., "server status", "are servers up", "how are the servers") → use "minecraft_status" tool
+- Minecraft server status/network queries (e.g., "server status", "are servers up", "how are the servers", "mc network status", "network status") → use "minecraft_status" tool
 - Image requests (e.g., "draw", "generate image", "create a picture") → use "image" type
 - General conversation that doesn't fit any tool → use "chat" type
 
