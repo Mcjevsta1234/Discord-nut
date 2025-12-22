@@ -606,11 +606,12 @@ export class ResponseRenderer {
     }
 
     // Extract HTML blocks (ALWAYS attach complete HTML files)
+    // CRITICAL: Search in cleanedContent, not responseContent, to avoid duplicating HTML from code blocks
     const htmlRegex = /<(!DOCTYPE html|html)[\s\S]*?<\/html>/gi;
     let htmlMatch;
     let htmlIndex = 0;
 
-    while ((htmlMatch = htmlRegex.exec(responseContent)) !== null) {
+    while ((htmlMatch = htmlRegex.exec(cleanedContent)) !== null) {
       const html = htmlMatch[0].trim();
       
       // ALWAYS attach HTML files (no inline HTML allowed)
