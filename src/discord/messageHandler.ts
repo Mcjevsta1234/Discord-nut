@@ -893,21 +893,32 @@ export class MessageHandler {
         },
         {
           role: 'user',
-          content: `IMPORTANT: You MUST respond with a conversational message that includes the information from the tool results above.
+          content: `CRITICAL INSTRUCTIONS:
 
 The user asked: "${userQuery}"
 
-Your response should:
-1. Use the exact information from the tool results
-2. Add friendly conversational text around it
-3. Match your persona's personality
-4. NEVER just return the raw tool output alone
+You MUST respond with a conversational message that includes the tool results.
 
-Example for time query:
+DISCORD TIMESTAMP RULE (CRITICAL):
+- If the result contains Discord timestamps like <t:1234567890:f> or <t:1234567890:R>
+- You MUST include them EXACTLY as-is in your response
+- Do NOT modify the timestamp format
+- Do NOT convert to human-readable text
+- Place them inline in your sentence
+
+Your response requirements:
+1. Include the EXACT tool output (especially timestamps)
+2. Wrap it in friendly, conversational text
+3. Match your persona's personality and speaking style
+4. NEVER return raw tool output alone
+
+Examples:
 ❌ BAD: "2025-12-22 14:30:00 UTC"
-✅ GOOD: "Hey! It's 2:30 PM UTC right now. What's up? ☕"
+❌ BAD: "<t:1766430477:f>"
+✅ GOOD: "Hey! It's <t:1766430477:f> right now ✨ What's up?"
+✅ GOOD: "The current time is <t:1766430477:f> 🕐"
 
-Now respond to the user's request conversationally:`,
+Now respond conversationally with the tool data:`,
         },
       ];
 
@@ -921,7 +932,7 @@ Now respond to the user's request conversationally:`,
           ...responsePrompt,
           {
             role: 'system',
-            content: 'REMINDER: You are chatting casually. Wrap the tool data in friendly conversation. Do NOT just return the raw output.',
+            content: 'REMINDER: Keep Discord timestamps like <t:1234567890:f> EXACTLY as-is. Wrap tool data in friendly conversation. Do NOT return raw output alone.',
           },
         ];
       } else if (tier) {
@@ -931,9 +942,11 @@ Now respond to the user's request conversationally:`,
 
       // Ensure valid response
       if (!response.content || response.content.trim().length === 0) {
-        console.warn('Empty response from AI, returning tool context directly');
+        console.warn('Empty response from AI after tool execution, generating fallback');
+        // Generate a basic conversational fallback with tool results
+        const fallbackMessage = this.generateToolResultFallback(userQuery, toolContext);
         return {
-          content: `**Results:**\n${toolContext}`,
+          content: fallbackMessage,
           metadata: response.metadata,
         };
       }
@@ -942,14 +955,16 @@ Now respond to the user's request conversationally:`,
     } catch (error) {
       console.error('Error generating final response:', error);
       
-      // Fallback: return tool results directly
-      const toolContext = executionResult.results
+      // CRITICAL: Don't lose tool results even if LLM fails
+      const toolResults = executionResult.results
         .filter((r: any) => r.success && r.content)
         .map((r: any) => r.content)
         .join('\n\n');
 
-      if (toolContext) {
-        return { content: toolContext, metadata: undefined };
+      if (toolResults) {
+        console.log('LLM failed but tool succeeded - generating local fallback');
+        const fallbackMessage = this.generateToolResultFallback(userQuery, toolResults);
+        return { content: fallbackMessage, metadata: undefined };
       }
 
       return {
@@ -957,6 +972,32 @@ Now respond to the user's request conversationally:`,
         metadata: undefined,
       };
     }
+  }
+
+  /**
+   * Generate a simple fallback response when LLM fails after successful tool execution
+   * Preserves Discord timestamps and wraps tool output minimally
+   */
+  private generateToolResultFallback(userQuery: string, toolOutput: string): string {
+    const lowerQuery = userQuery.toLowerCase();
+    
+    // Time queries
+    if (lowerQuery.includes('time') || lowerQuery.includes('clock')) {
+      return `Here's the time: ${toolOutput} ⏰`;
+    }
+    
+    // Minecraft/server queries
+    if (lowerQuery.includes('minecraft') || lowerQuery.includes('server') || lowerQuery.includes('mc')) {
+      return `Server status:\n\n${toolOutput}`;
+    }
+    
+    // Math/calculation
+    if (lowerQuery.includes('calculate') || lowerQuery.includes('math') || /\d+[\+\-\*\/]\d+/.test(lowerQuery)) {
+      return `Here's the result: ${toolOutput}`;
+    }
+    
+    // Generic fallback
+    return `Here's what I found:\n\n${toolOutput}`;
   }
 
   /**
