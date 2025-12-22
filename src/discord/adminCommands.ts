@@ -89,16 +89,24 @@ export class AdminCommandHandler {
         .setName('admin-clear-config')
         .setDescription('Clear custom admin config for this server (reverts to MANAGE_GUILD)')
         .toJSON(),
-      // User-accessible clear command (safe for repeated use)
+      // Clear context command with subcommands
       new SlashCommandBuilder()
         .setName('clear')
-        .setDescription('Clear YOUR stored conversation context for this channel or DM')
-        .addStringOption((option) =>
-          option
-            .setName('target')
-            .setDescription('Who to clear (only "me")')
-            .addChoices({ name: 'me', value: 'me' })
-            .setRequired(false)
+        .setDescription('Clear conversation context')
+        .addSubcommand((sc) =>
+          sc
+            .setName('me')
+            .setDescription('Clear YOUR stored conversation context for this channel or DM')
+        )
+        .addSubcommand((sc) =>
+          sc
+            .setName('channel')
+            .setDescription('Admin only: Clear ALL user contexts for this channel')
+        )
+        .addSubcommand((sc) =>
+          sc
+            .setName('server')
+            .setDescription('Admin only: Clear ALL contexts for this server')
         )
         .toJSON(),
       new SlashCommandBuilder()
@@ -139,9 +147,12 @@ export class AdminCommandHandler {
 
   async handleInteraction(interaction: Interaction): Promise<void> {
     if (!interaction.isChatInputCommand()) return;
-    // Allow clear commands for all users; other admin commands require admin rights
-    const isClearContext = interaction.commandName === 'clear-context' || interaction.commandName === 'clear';
-    if (!isClearContext && !this.hasPermission(interaction)) {
+    // Allow clear me for all users; other admin commands require admin rights
+    const isClear = interaction.commandName === 'clear';
+    const sub = isClear && 'getSubcommand' in interaction.options ? (interaction.options as any).getSubcommand(false) : undefined;
+    const isUserClear = interaction.commandName === 'clear-context' || (isClear && (!sub || sub === 'me'));
+    const requiresAdmin = !isUserClear;
+    if (requiresAdmin && !this.hasPermission(interaction as any)) {
       await interaction.reply({
         content: 'You do not have permission to run this command.',
         ephemeral: true,
@@ -170,17 +181,19 @@ export class AdminCommandHandler {
     }
 
     if (interaction.commandName === 'clear') {
-      // Optionally check target; only 'me' is supported
-      const target = interaction.options.getString('target') || 'me';
-      if (target !== 'me') {
-        await interaction.reply({
-          content: 'Only your own context can be cleared (use target: me).',
-          ephemeral: true,
-        });
+      const sub = interaction.options.getSubcommand(false);
+      if (!sub || sub === 'me') {
+        await this.handleClearContext(interaction);
         return;
       }
-      await this.handleClearContext(interaction);
-      return;
+      if (sub === 'channel') {
+        await this.handleClearChannel(interaction);
+        return;
+      }
+      if (sub === 'server') {
+        await this.handleClearServer(interaction);
+        return;
+      }
     }
 
     if (interaction.commandName === 'admin-set-role') {
@@ -268,6 +281,43 @@ export class AdminCommandHandler {
     const description = getDebugModeDescription(mode);
     await interaction.reply({
       content: `🐛 **Debug mode set to: ${mode.toUpperCase()}**\n\n${description}\n\nThis setting applies to ${guildId ? 'this server' : 'this channel'}.`,
+      ephemeral: true,
+    });
+  }
+
+  /**
+   * Admin-only: clear all user contexts in the current channel
+   */
+  private async handleClearChannel(
+    interaction: ChatInputCommandInteraction
+  ): Promise<void> {
+    if (!interaction.guildId) {
+      await interaction.reply({ content: 'This command can only be used in a server channel.', ephemeral: true });
+      return;
+    }
+    const guildId = interaction.guildId;
+    const channelId = interaction.channelId;
+    await this.fileContextManager.deleteChannelContexts(guildId, channelId);
+    await interaction.reply({
+      content: '🧹 Cleared all conversation contexts for this channel.',
+      ephemeral: true,
+    });
+  }
+
+  /**
+   * Admin-only: clear all contexts in the guild
+   */
+  private async handleClearServer(
+    interaction: ChatInputCommandInteraction
+  ): Promise<void> {
+    if (!interaction.guildId) {
+      await interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      return;
+    }
+    const guildId = interaction.guildId;
+    await this.fileContextManager.deleteGuildContexts(guildId);
+    await interaction.reply({
+      content: '🧹 Cleared all conversation contexts for this server.',
       ephemeral: true,
     });
   }

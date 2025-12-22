@@ -208,6 +208,41 @@ export class FileContextManager {
   }
 
   /**
+   * Delete ALL user contexts for a specific guild channel
+   * Path: context/guilds/{guildId}/{channelId}/
+   */
+  async deleteChannelContexts(guildId: string, channelId: string): Promise<void> {
+    try {
+      const dirPath = path.join(this.contextDir, 'guilds', guildId, channelId);
+      if (fs.existsSync(dirPath)) {
+        fs.rmSync(dirPath, { recursive: true, force: true });
+        // Recreate empty dir to keep structure tidy (optional)
+        fs.mkdirSync(dirPath, { recursive: true });
+        console.log(`Deleted all contexts for guild ${guildId} channel ${channelId}`);
+      }
+    } catch (error) {
+      console.error(`Failed to delete channel contexts for ${guildId}/${channelId}:`, error);
+    }
+  }
+
+  /**
+   * Delete ALL contexts for an entire guild
+   * Path: context/guilds/{guildId}/
+   */
+  async deleteGuildContexts(guildId: string): Promise<void> {
+    try {
+      const dirPath = path.join(this.contextDir, 'guilds', guildId);
+      if (fs.existsSync(dirPath)) {
+        fs.rmSync(dirPath, { recursive: true, force: true });
+        fs.mkdirSync(dirPath, { recursive: true });
+        console.log(`Deleted all contexts for guild ${guildId}`);
+      }
+    } catch (error) {
+      console.error(`Failed to delete guild contexts for ${guildId}:`, error);
+    }
+  }
+
+  /**
    * Get file system path for context file
    * Guilds: context/guilds/{guildId}/{channelId}/{userId}.json
    * DMs: context/dms/{userId}.json
