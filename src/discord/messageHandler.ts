@@ -892,7 +892,7 @@ export class MessageHandler {
         },
         {
           role: 'user',
-          content: `Based on the results above, provide a natural, conversational response to: "${userQuery}"`,
+          content: `Based on the results above, respond naturally and conversationally to the user's request: "${userQuery}". Be friendly and engaging, don't just repeat the results. Include the information from the results in your response in a natural way.`,
         },
       ];
 
