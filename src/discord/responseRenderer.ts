@@ -9,7 +9,7 @@
  * - Debug mode controls what information is displayed
  */
 
-import { EmbedBuilder, Message as DiscordMessage, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
+import { EmbedBuilder, Message as DiscordMessage, ActionRowBuilder, ButtonBuilder, ButtonStyle, TextBasedChannel } from 'discord.js';
 import { PlannedAction, ActionPlan } from '../ai/planner';
 import { ActionResult, ExecutionResult } from '../ai/actionExecutor';
 import { AggregatedLLMMetadata, LLMResponseMetadata } from '../ai/llmMetadata';
@@ -381,8 +381,14 @@ export class ResponseRenderer {
 
   /**
    * Send the rendered response to Discord
-   * This handles both the system embed and the conversational response
-   * Respects debug mode settings
+   * STRICT ORDER:
+   * 1. System/debug embed FIRST (if not in OFF mode)
+   * 2. User-facing response SECOND as separate message with attachments
+   * 
+   * Handles:
+   * - File attachments for code/HTML
+   * - Message splitting for long text
+   * - Proper ordering
    */
   static async sendToDiscord(
     message: DiscordMessage,
@@ -394,41 +400,89 @@ export class ResponseRenderer {
       const channelId = message.channelId;
       const debugMode = getDebugMode(guildId, channelId);
 
-      // Create response embed (Embed 2) for the actual conversational reply
-      const responseEmbed = new EmbedBuilder()
-        .setColor(0x00ff00) // Green for user-facing response
-        .setTitle('💬 Response')
-        .setDescription(this.truncate(rendered.responseContent, 1900))
-        .setTimestamp();
+      // STEP 1: Extract code/HTML for file attachments
+      const { content: cleanedContent, attachments: fileAttachments } = 
+        this.extractCodeAndHtml(rendered.responseContent);
 
-      // Build embeds array based on debug mode
-      const embeds = [];
+      // STEP 2: Send system embed FIRST (if not in OFF mode)
+      let systemMessage: DiscordMessage | null = null;
       
-      // Only add system embed if debug mode is not OFF and embed has content
       if (debugMode !== DebugMode.OFF && rendered.systemEmbed.data.description) {
-        embeds.push(rendered.systemEmbed);
+        if (workingMessage) {
+          // Edit working message to show system embed
+          await workingMessage.edit({
+            content: null,
+            embeds: [rendered.systemEmbed],
+            components: [],
+          });
+          systemMessage = workingMessage;
+        } else {
+          // Send system embed as new message
+          systemMessage = await message.reply({
+            embeds: [rendered.systemEmbed],
+          });
+        }
+      } else if (workingMessage) {
+        // Delete working message if debug is OFF
+        await workingMessage.delete().catch(() => {});
       }
-      
-      embeds.push(responseEmbed);
 
-      // If there's a working message, edit it
-      if (workingMessage) {
-        await workingMessage.edit({
-          content: null,
-          embeds,
-          components: rendered.actionButtons ? [rendered.actionButtons] : [],
-        });
-        return workingMessage;
-      } else {
-        // Send new message
-        return await message.reply({
-          embeds,
-          components: rendered.actionButtons ? [rendered.actionButtons] : [],
-        });
+      // STEP 3: Prepare file attachments
+      const { AttachmentBuilder } = await import('discord.js');
+      const discordAttachments = fileAttachments.map(file => 
+        new AttachmentBuilder(Buffer.from(file.content, 'utf-8'), {
+          name: file.filename,
+        })
+      );
+
+      // STEP 4: Split long text if needed
+      const messageChunks = this.splitLongText(cleanedContent, 1900);
+
+      // STEP 5: Send user-facing response(s) AFTER system embed
+      let lastResponseMessage: DiscordMessage | null = null;
+      
+      for (let i = 0; i < messageChunks.length; i++) {
+        const chunk = messageChunks[i];
+        const isLastChunk = i === messageChunks.length - 1;
+        
+        // Only attach files to the last chunk
+        const attachmentsForChunk = isLastChunk ? discordAttachments : [];
+        
+        // Add continuation indicator if not the last chunk
+        const chunkContent = messageChunks.length > 1 && !isLastChunk
+          ? `${chunk}\n\n*(continued...)*`
+          : chunk;
+        
+        // Send as reply to original message (not reply to system embed)
+        if ('send' in message.channel) {
+          lastResponseMessage = await message.channel.send({
+            content: chunkContent,
+            files: attachmentsForChunk,
+          });
+        }
+        
+        // Small delay between chunks to ensure ordering
+        if (!isLastChunk) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
       }
+
+      return lastResponseMessage || systemMessage;
     } catch (error) {
       console.error('Error sending rendered response to Discord:', error);
-      return null;
+      
+      // Fallback: try to send basic response
+      try {
+        if ('send' in message.channel) {
+          return await message.channel.send({
+            content: this.truncate(rendered.responseContent, 1900),
+          });
+        }
+        return null;
+      } catch (fallbackError) {
+        console.error('Fallback send also failed:', fallbackError);
+        return null;
+      }
     }
   }
 
@@ -468,6 +522,166 @@ export class ResponseRenderer {
     return embed.setDescription(
       `${baseDesc}\n\n${icon} ${text}${details ? `\n${details}` : ''}`
     );
+  }
+
+  /**
+   * Extract code blocks or HTML from response for file attachment
+   * Returns: { content: cleaned text, attachments: file data }
+   */
+  static extractCodeAndHtml(responseContent: string): {
+    content: string;
+    attachments: Array<{ content: string; filename: string; language: string }>;
+  } {
+    const attachments: Array<{ content: string; filename: string; language: string }> = [];
+    let cleanedContent = responseContent;
+
+    // Extract code blocks (```language\ncode\n```)
+    const codeBlockRegex = /```([a-z]*)?\n([\s\S]*?)```/gi;
+    let match;
+    let blockIndex = 0;
+
+    while ((match = codeBlockRegex.exec(responseContent)) !== null) {
+      const language = match[1] || 'txt';
+      const code = match[2].trim();
+      
+      // Only create file if code block is substantial (> 100 chars or > 5 lines)
+      if (code.length > 100 || code.split('\n').length > 5) {
+        blockIndex++;
+        const extension = this.getFileExtension(language);
+        const filename = `code-${blockIndex}.${extension}`;
+        
+        attachments.push({
+          content: code,
+          filename,
+          language,
+        });
+        
+        // Replace with file reference
+        cleanedContent = cleanedContent.replace(
+          match[0],
+          `📎 **Code attached:** \`${filename}\``
+        );
+      }
+    }
+
+    // Extract HTML blocks (large HTML content)
+    const htmlRegex = /<(!DOCTYPE html|html)[\s\S]*?<\/html>/gi;
+    let htmlMatch;
+    let htmlIndex = 0;
+
+    while ((htmlMatch = htmlRegex.exec(responseContent)) !== null) {
+      const html = htmlMatch[0].trim();
+      
+      if (html.length > 200) {
+        htmlIndex++;
+        const filename = `output-${htmlIndex}.html`;
+        
+        attachments.push({
+          content: html,
+          filename,
+          language: 'html',
+        });
+        
+        // Replace with file reference
+        cleanedContent = cleanedContent.replace(
+          html,
+          `📎 **HTML attached:** \`${filename}\``
+        );
+      }
+    }
+
+    return {
+      content: cleanedContent.trim(),
+      attachments,
+    };
+  }
+
+  /**
+   * Get file extension for a language
+   */
+  private static getFileExtension(language: string): string {
+    const extensions: Record<string, string> = {
+      javascript: 'js',
+      typescript: 'ts',
+      python: 'py',
+      java: 'java',
+      cpp: 'cpp',
+      c: 'c',
+      csharp: 'cs',
+      go: 'go',
+      rust: 'rs',
+      php: 'php',
+      ruby: 'rb',
+      swift: 'swift',
+      kotlin: 'kt',
+      html: 'html',
+      css: 'css',
+      json: 'json',
+      xml: 'xml',
+      yaml: 'yaml',
+      yml: 'yml',
+      sql: 'sql',
+      sh: 'sh',
+      bash: 'sh',
+      markdown: 'md',
+      md: 'md',
+    };
+    
+    return extensions[language.toLowerCase()] || 'txt';
+  }
+
+  /**
+   * Split long text into multiple messages (for Discord length limits)
+   * Returns array of message chunks
+   */
+  static splitLongText(text: string, maxLength: number = 1900): string[] {
+    if (text.length <= maxLength) {
+      return [text];
+    }
+
+    const chunks: string[] = [];
+    const paragraphs = text.split('\\n\\n');
+    let currentChunk = '';
+
+    for (const paragraph of paragraphs) {
+      // If single paragraph exceeds limit, split by sentences
+      if (paragraph.length > maxLength) {
+        const sentences = paragraph.split(/(?<=[.!?])\\s+/);
+        
+        for (const sentence of sentences) {
+          if (currentChunk.length + sentence.length + 2 > maxLength) {
+            if (currentChunk) {
+              chunks.push(currentChunk.trim());
+              currentChunk = '';
+            }
+            // If single sentence exceeds limit, force split
+            if (sentence.length > maxLength) {
+              for (let i = 0; i < sentence.length; i += maxLength) {
+                chunks.push(sentence.slice(i, i + maxLength));
+              }
+            } else {
+              currentChunk = sentence;
+            }
+          } else {
+            currentChunk += (currentChunk ? ' ' : '') + sentence;
+          }
+        }
+      } else {
+        // Normal paragraph
+        if (currentChunk.length + paragraph.length + 2 > maxLength) {
+          chunks.push(currentChunk.trim());
+          currentChunk = paragraph;
+        } else {
+          currentChunk += (currentChunk ? '\\n\\n' : '') + paragraph;
+        }
+      }
+    }
+
+    if (currentChunk) {
+      chunks.push(currentChunk.trim());
+    }
+
+    return chunks.length > 0 ? chunks : [text];
   }
 
   /**
