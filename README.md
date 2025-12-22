@@ -80,18 +80,41 @@ src/
 
 ## Usage
 
-### Development Mode
+### Discord Bot Mode
+
+#### Development Mode
 Run the bot directly with TypeScript:
 ```bash
 npm run dev
 ```
 
-### Production Mode
+#### Production Mode
 Build and run the compiled JavaScript:
 ```bash
 npm run build
 npm start
 ```
+
+### Console Chat Mode (Debugging)
+
+For development and testing, you can chat with the bot directly in your console without Discord:
+
+```bash
+# Development mode
+npm run console
+
+# Production mode
+npm run console:build
+```
+
+Console mode provides:
+- ✅ Interactive chat interface in your terminal
+- ✅ Full AI pipeline (routing, planning, tool execution)
+- ✅ Persona support (Emma, Alex, Max)
+- ✅ Action plan visibility for debugging
+- ✅ Conversation history management
+
+See [docs/CONSOLE_MODE.md](docs/CONSOLE_MODE.md) for detailed usage and commands.
 
 ## Configuration
 

@@ -150,8 +150,8 @@ export const routingConfig: RoutingConfig = {
   mode: getEnv('ROUTING_MODE', 'hybrid') as RoutingMode,
   
   // Router model used for intelligent routing decisions (should be fast and cheap)
-  // Using Gemma 9B - fast, efficient, and excellent at classification tasks
-  routerModelId: getEnv('MODEL_ROUTER', 'google/gemma-2-9b-it:free'),
+  // Using GPT-OSS 20B - fast, efficient, and reliable
+  routerModelId: getEnv('MODEL_ROUTER', 'openai/gpt-oss-20b:free'),
   
   // Fallback router if primary fails (rate limits, errors)
   fallbackRouterModelId: getEnv('MODEL_ROUTER_FALLBACK', 'meta-llama/llama-3.2-3b-instruct:free'),
@@ -170,12 +170,12 @@ export const routingConfig: RoutingConfig = {
   tiers: {
     [ModelTier.INSTANT]: {
       tier: ModelTier.INSTANT,
-      modelId: getEnv('MODEL_INSTANT', 'google/gemini-2.0-flash-exp:free'),
+      modelId: getEnv('MODEL_INSTANT', 'openai/gpt-oss-20b:free'),
       maxPromptTokens: getEnvNumber('MODEL_INSTANT_MAX_PROMPT', 4000),
       maxOutputTokens: getEnvNumber('MODEL_INSTANT_MAX_OUTPUT', 256),
       costTier: 'free',
-      provider: 'google',
-      supportsTools: true, // Gemini has excellent tool calling support
+      provider: 'openai',
+      supportsTools: true,
       supportsCaching: false,
       inputPricePerMillionTokens: getEnvFloat('MODEL_INSTANT_INPUT_PRICE', 0),
       outputPricePerMillionTokens: getEnvFloat('MODEL_INSTANT_OUTPUT_PRICE', 0),
