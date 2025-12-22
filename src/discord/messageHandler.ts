@@ -572,12 +572,12 @@ export class MessageHandler {
   }
 
   /**
-   * Add coding-specific guidance to ensure single-file HTML generation
+   * Add coding-specific guidance to ensure single-file HTML generation with mobile compatibility
    */
   private addCodingGuidance(messages: Message[]): Message[] {
     const guidanceMessage: Message = {
       role: 'system',
-      content: 'IMPORTANT: When generating HTML/CSS/JS, ALWAYS create a single HTML file with inline <style> and <script> tags. Never split into separate files. Put CSS in <head> and JS before </body>. Be concise in explanations.'
+      content: 'IMPORTANT: When generating HTML/CSS/JS, ALWAYS create a single HTML file with inline <style> and <script> tags. Never split into separate files. Put CSS in <head> and JS before </body>. MUST be mobile-responsive: include viewport meta tag, use responsive CSS (flexbox/grid), relative units (%, rem, vw/vh), and media queries. Test that it works on mobile devices. Be concise in explanations.'
     };
     
     // Insert guidance before the last user message
