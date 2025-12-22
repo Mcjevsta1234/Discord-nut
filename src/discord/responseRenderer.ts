@@ -877,8 +877,10 @@ export class ResponseRenderer {
         
         // Send as reply to original message (not reply to system embed)
         if ('send' in message.channel) {
+          // Add action buttons to the last chunk only
           lastResponseMessage = await message.channel.send({
             content: chunkContent,
+            components: isLastChunk && rendered.actionButtons ? [rendered.actionButtons] : [],
           });
         }
         
@@ -900,9 +902,13 @@ export class ResponseRenderer {
           summaryLines.push(...attachmentErrors.map(e => `⚠️ ${e}`));
         }
 
+        // If this is the only message (no text chunks sent), add action buttons here
+        const shouldAddButtons = messageChunks.length === 0 && rendered.actionButtons;
+
         lastResponseMessage = await message.channel.send({
           content: summaryLines.join('\n') || '📎 Attached files:',
           files: discordAttachments,
+          components: shouldAddButtons && rendered.actionButtons ? [rendered.actionButtons] : [],
         });
       }
 

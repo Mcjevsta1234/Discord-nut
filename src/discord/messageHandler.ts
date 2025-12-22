@@ -517,12 +517,14 @@ Current message: ${message.content}`
           }
         }
 
-        // Track context
-        if (sentMessage && personaId) {
-          this.promptManager.trackMessagePersona(sentMessage.id, personaId);
+        // Track context for button interactions (always store context)
+        if (sentMessage) {
+          if (personaId) {
+            this.promptManager.trackMessagePersona(sentMessage.id, personaId);
+          }
           this.messageContexts.set(sentMessage.id, {
             userContent: message.content,
-            personaId,
+            personaId: personaId || undefined,
             channelId,
             originalMessageId: message.id,
           });
