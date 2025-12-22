@@ -391,7 +391,8 @@ export class MessageHandler {
           executionResult,
           finalPrompt,
           routingDecision.modelId,
-          routingDecision.tier
+          routingDecision.tier,
+          personaId
         );
 
         let finalResponse = responseResult.content;
@@ -415,7 +416,8 @@ export class MessageHandler {
             executionResult,
             composedPrompt.messages,
             retryDecision.modelId,
-            retryDecision.tier
+            retryDecision.tier,
+            personaId
           );
           
           finalResponse = retryResult.content;
@@ -857,7 +859,8 @@ export class MessageHandler {
     executionResult: any,
     conversationMessages: Message[],
     model: string,
-    tier?: string
+    tier?: string,
+    personaId?: string
   ): Promise<{ content: string; metadata?: LLMResponseMetadata }> {
     try {
       // Check if there are any tool results to summarize
@@ -884,7 +887,36 @@ export class MessageHandler {
         .map((r: any, i: number) => `Result ${i + 1}:\n${r.content}`)
         .join('\n\n');
 
-      // Create response prompt with tool context - FORCE conversational response
+      // Get persona details for personality-driven responses
+      const persona = personaId ? this.promptManager.getPersona(personaId) : null;
+      const personaName = persona?.displayName || 'Assistant';
+      
+      // Create persona-specific instructions based on character
+      let personalityGuidance = '';
+      if (personaId === 'emma') {
+        personalityGuidance = `Remember: You're EMMA - bubbly, witty, flirty 18-year-old college student. 
+- Use emojis naturally (😏, ✨, 💅, 👀)
+- Be playful and sassy in your response
+- Use casual language and modern slang
+- Show excitement and personality!
+- Example tone: "Omg it's <t:1766430477:f> already! Time flies when you're having fun 😏✨"`;
+      } else if (personaId === 'steve') {
+        personalityGuidance = `Remember: You're STEVE - 24-year-old Minecraft expert, laid-back and helpful.
+- Keep it chill and friendly
+- Use gaming/tech language naturally
+- Be enthusiastic about Minecraft stuff
+- Example tone: "Hey! Checked the servers for you - looking good! 🎮"`;
+      } else if (personaId === 'wiz') {
+        personalityGuidance = `Remember: You're WIZ - 27-year-old developer, professional but friendly.
+- Technical and precise but approachable
+- Use developer terminology appropriately
+- Be helpful and clear
+- Example tone: "Here's the data: <timestamp>. Let me know if you need anything else!"`;
+      } else {
+        personalityGuidance = `Stay true to your persona's personality and speaking style.`;
+      }
+
+      // Create response prompt with tool context - PERSONALITY-DRIVEN
       const responsePrompt: Message[] = [
         ...conversationMessages,
         {
@@ -893,34 +925,32 @@ export class MessageHandler {
         },
         {
           role: 'user',
-          content: `CRITICAL INSTRUCTIONS:
+          content: `CRITICAL INSTRUCTIONS FOR ${personaName.toUpperCase()}:
 
 The user asked: "${userQuery}"
 
-You MUST respond with a conversational message that includes the tool results.
+PERSONALITY REQUIREMENTS (MOST IMPORTANT):
+${personalityGuidance}
 
-DISCORD TIMESTAMP RULE (CRITICAL):
+DISCORD TIMESTAMP RULE:
 - If the result contains Discord timestamps like <t:1234567890:f> or <t:1234567890:R>
 - You MUST include them EXACTLY as-is in your response
 - Do NOT modify the timestamp format
-- Do NOT convert to human-readable text
-- Place them inline in your sentence
+- Place them inline in your sentence naturally
 
-Your response requirements:
-1. Include the EXACT tool output (especially timestamps)
-2. Wrap it in friendly, conversational text
-3. Match your persona's personality and speaking style
+Response requirements:
+1. BE IN CHARACTER - Show your full personality!
+2. Include the EXACT tool output (especially timestamps)
+3. Make it conversational and fun
 4. NEVER return raw tool output alone
 
-Examples:
-❌ BAD: "2025-12-22 14:30:00 UTC"
-❌ BAD: "<t:1766430477:f>"
-✅ GOOD: "Hey! It's <t:1766430477:f> right now ✨ What's up?"
-✅ GOOD: "The current time is <t:1766430477:f> 🕐"
+Examples for ${personaName}:
+❌ BAD (no personality): "The time is <t:1766430477:f>"
+✅ GOOD (in character): Use your unique personality to wrap the tool data!
 
-${tier === 'INSTANT' ? '\nREMINDER: Keep Discord timestamps like <t:1234567890:f> EXACTLY as-is. Wrap tool data in friendly conversation.' : ''}
+${tier === 'INSTANT' ? '\nREMINDER: Keep Discord timestamps EXACT. Be conversational and show personality!' : ''}
 
-Now respond conversationally with the tool data:`,
+Now respond IN CHARACTER with the tool data:`,
         },
       ];
 

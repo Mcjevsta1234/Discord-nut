@@ -66,6 +66,10 @@ export class PromptManager {
     return override?.personaId || defaultPersonaId;
   }
 
+  getPersona(personaId: string) {
+    return getPersona(personaId);
+  }
+
   trackMessagePersona(messageId: string, personaId: string): void {
     this.lastUsedPersona.set(messageId, personaId);
   }
