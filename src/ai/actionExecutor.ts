@@ -75,7 +75,7 @@ export class ActionExecutor {
         // Chat action is handled by final response generation
         return {
           success: true,
-          content: 'Chat response will be generated',
+          content: '',
         };
       }
 

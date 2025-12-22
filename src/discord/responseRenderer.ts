@@ -16,6 +16,7 @@ import { AggregatedLLMMetadata, LLMResponseMetadata } from '../ai/llmMetadata';
 import { RoutingDecision } from '../ai/modelTiers';
 import { getTierConfig } from '../config/routing';
 import { DebugMode, DebugSection, shouldShowSection, getDebugMode } from './debugMode';
+import { FileAttachmentHandler, FileContent } from './fileAttachments';
 
 /**
  * Metadata about the response generation process
@@ -400,11 +401,38 @@ export class ResponseRenderer {
       const channelId = message.channelId;
       const debugMode = getDebugMode(guildId, channelId);
 
-      // STEP 1: Extract code/HTML for file attachments
-      const { content: cleanedContent, attachments: fileAttachments } = 
-        this.extractCodeAndHtml(rendered.responseContent);
+      // PROCESSING ORDER: normalize → extract → prepare attachments → clean text → split → validate
+      const normalizedContent = this.normalizeModelOutput(rendered.responseContent);
+      const extractionResult = this.extractCodeAndHtml(normalizedContent);
 
-      // STEP 2: Send system embed FIRST (if not in OFF mode)
+      const fileContents: FileContent[] = extractionResult.attachments.map(file => ({
+        filename: file.filename,
+        content: file.content,
+      }));
+
+      const { attachments: discordAttachments, warnings: attachmentWarnings, errors: attachmentErrors } =
+        FileAttachmentHandler.createMultipleAttachments(fileContents);
+
+      let messageChunks = this.splitLongText(extractionResult.content, 1900);
+
+      if (attachmentWarnings.length || attachmentErrors.length) {
+        if (messageChunks.length === 0) {
+          messageChunks.push('');
+        }
+        const noticeLines = [
+          ...attachmentWarnings.map(w => `⚠️ ${w}`),
+          ...attachmentErrors.map(e => `⚠️ ${e}`),
+        ];
+        const lastIndex = messageChunks.length - 1;
+        const existing = messageChunks[lastIndex];
+        messageChunks[lastIndex] = existing
+          ? `${existing}\n\n${noticeLines.join('\n')}`
+          : noticeLines.join('\n');
+      }
+
+      messageChunks = this.validateMessageChunks(messageChunks, discordAttachments.length > 0);
+
+      // STEP 1: Send system embed FIRST (if not in OFF mode)
       let systemMessage: DiscordMessage | null = null;
       
       if (debugMode !== DebugMode.OFF && rendered.systemEmbed.data.description) {
@@ -427,26 +455,12 @@ export class ResponseRenderer {
         await workingMessage.delete().catch(() => {});
       }
 
-      // STEP 3: Prepare file attachments
-      const { AttachmentBuilder } = await import('discord.js');
-      const discordAttachments = fileAttachments.map(file => 
-        new AttachmentBuilder(Buffer.from(file.content, 'utf-8'), {
-          name: file.filename,
-        })
-      );
-
-      // STEP 4: Split long text if needed
-      const messageChunks = this.splitLongText(cleanedContent, 1900);
-
-      // STEP 5: Send user-facing response(s) AFTER system embed
+      // STEP 2: Send user-facing text AFTER system embed
       let lastResponseMessage: DiscordMessage | null = null;
       
       for (let i = 0; i < messageChunks.length; i++) {
         const chunk = messageChunks[i];
         const isLastChunk = i === messageChunks.length - 1;
-        
-        // Only attach files to the last chunk
-        const attachmentsForChunk = isLastChunk ? discordAttachments : [];
         
         // Add continuation indicator if not the last chunk
         const chunkContent = messageChunks.length > 1 && !isLastChunk
@@ -457,7 +471,6 @@ export class ResponseRenderer {
         if ('send' in message.channel) {
           lastResponseMessage = await message.channel.send({
             content: chunkContent,
-            files: attachmentsForChunk,
           });
         }
         
@@ -465,6 +478,24 @@ export class ResponseRenderer {
         if (!isLastChunk) {
           await new Promise(resolve => setTimeout(resolve, 300));
         }
+      }
+
+      // STEP 3: Send file attachments LAST (after embeds and text)
+      if (discordAttachments.length > 0 && 'send' in message.channel) {
+        const summaryLines: string[] = [];
+        const summary = this.buildAttachmentSummary(extractionResult.attachments);
+        if (summary) {
+          summaryLines.push(summary);
+        }
+        if (attachmentWarnings.length || attachmentErrors.length) {
+          summaryLines.push(...attachmentWarnings.map(w => `⚠️ ${w}`));
+          summaryLines.push(...attachmentErrors.map(e => `⚠️ ${e}`));
+        }
+
+        lastResponseMessage = await message.channel.send({
+          content: summaryLines.join('\n') || '📎 Attached files:',
+          files: discordAttachments,
+        });
       }
 
       return lastResponseMessage || systemMessage;
@@ -682,6 +713,96 @@ export class ResponseRenderer {
     }
 
     return chunks.length > 0 ? chunks : [text];
+  }
+
+  /**
+   * Ensure final message chunks are valid before sending and add fallback text when needed
+   */
+  private static validateMessageChunks(chunks: string[], hasAttachments: boolean): string[] {
+    const validated: string[] = [];
+
+    for (const chunk of chunks) {
+      if (chunk && chunk.trim().length > 0) {
+        validated.push(chunk);
+      }
+    }
+
+    if (validated.length === 0) {
+      validated.push(hasAttachments ? '📎 Files attached below.' : 'Done! (no additional text response)');
+    }
+
+    return validated;
+  }
+
+  /**
+   * Normalize model output before extraction so concatenated strings become real code blocks
+   */
+  private static normalizeModelOutput(content: string): string {
+    if (!content) {
+      return 'Done!';
+    }
+
+    let normalized = content.replace(/\r\n/g, '\n').trim();
+    normalized = this.mergeConcatenatedLiterals(normalized);
+
+    return normalized.length > 0 ? normalized : 'Done!';
+  }
+
+  /**
+   * Detect string-literal concatenations ("foo" + "bar") that wrap code/HTML and collapse them
+   */
+  private static mergeConcatenatedLiterals(text: string): string {
+    const concatRegex = /((["]|')(?:\\.|(?!\2)[\s\S])*?\2)(\s*\+\s*(["]|')(?:\\.|(?!\4)[\s\S])*?\4)+/g;
+
+    return text.replace(concatRegex, (match) => {
+      const literalRegex = /(["'])(?:\\.|(?!\1)[\s\S])*?\1/g;
+      const collectedLiterals: string[] = [];
+      let literalMatch: RegExpExecArray | null;
+
+      while ((literalMatch = literalRegex.exec(match)) !== null) {
+        collectedLiterals.push(literalMatch[0]);
+      }
+
+      if (collectedLiterals.length === 0) {
+        return match;
+      }
+
+      const combined = collectedLiterals
+        .map(lit => this.unescapeLiteral(lit.slice(1, -1)))
+        .join('');
+
+      const looksLikeCode = combined.includes('```') || /<!doctype/i.test(combined) || /<\/?html/i.test(combined);
+      if (looksLikeCode) {
+        return combined;
+      }
+
+      return match;
+    });
+  }
+
+  /**
+   * Convert escaped newline/tab sequences back to their literal characters
+   */
+  private static unescapeLiteral(segment: string): string {
+    return segment
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '')
+      .replace(/\\t/g, '\t')
+      .replace(/\\`/g, '`')
+      .replace(/\\"/g, '"')
+      .replace(/\\'/g, "'");
+  }
+
+  /**
+   * Build a short summary describing which files were attached
+   */
+  private static buildAttachmentSummary(attachments: Array<{ filename: string }>): string {
+    if (!attachments || attachments.length === 0) {
+      return '';
+    }
+
+    const names = attachments.map(file => file.filename).join(', ');
+    return `📎 Attached files: ${names}`;
   }
 
   /**

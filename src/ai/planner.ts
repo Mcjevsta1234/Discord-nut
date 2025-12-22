@@ -20,6 +20,7 @@ export interface ActionPlan {
   actions: PlannedAction[];
   reasoning: string;
   metadata?: LLMResponseMetadata;
+  isFallback?: boolean;
 }
 
 export class Planner {
@@ -38,6 +39,7 @@ export class Planner {
       actions: [{ type: 'chat' }],
       reasoning: 'Conversational response', // Synthetic, not LLM-generated
       metadata: undefined, // No LLM call = no metadata
+      isFallback: false,
     };
   }
 
@@ -121,6 +123,7 @@ Example outputs:
           actions: parsed.actions,
           reasoning: parsed.reasoning || 'Planned actions',
           metadata: response.metadata,
+          isFallback: false,
         };
 
       } catch (parseError) {
@@ -135,6 +138,7 @@ Example outputs:
         return {
           actions: [{ type: 'chat' }],
           reasoning: 'Empty plan fallback',
+          isFallback: false,
         };
       }
 
@@ -173,6 +177,7 @@ Example outputs:
       return {
         actions: [{ type: 'chat' }],
         reasoning: 'Planning failed after retry - using chat fallback',
+        isFallback: true,
       };
     }
   }

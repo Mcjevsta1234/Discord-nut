@@ -135,11 +135,22 @@ export class MessageHandler {
       // For INSTANT tier, use synthetic planning (no LLM call = save tokens)
       const planStartTime = Date.now();
       let plan: ActionPlan;
+      const plannerNeeded = routingDecision.tier === 'INSTANT'
+        ? true
+        : this.shouldUsePlanner(message.content);
       
       if (routingDecision.tier === 'INSTANT') {
         // Synthetic planning for INSTANT tier (no LLM call)
         plan = this.planner.createSyntheticPlanForInstant();
         console.log(`Action plan: INSTANT tier (synthetic, no LLM call)`);
+      } else if (!plannerNeeded) {
+        plan = {
+          actions: [{ type: 'chat' }],
+          reasoning: 'Direct response (no tools required)',
+          metadata: undefined,
+          isFallback: false,
+        };
+        console.log('Action plan: direct response (planner skipped)');
       } else {
         // LLM-based planning for other tiers
         plan = await this.planner.planActionsWithRetry(
@@ -150,10 +161,15 @@ export class MessageHandler {
         console.log(`Action plan: ${plan.actions.map(a => a.type).join(' → ')}`);
       }
 
+      const reportedActions = plan.isFallback ? [] : plan.actions;
+      const reportedReasoning = plan.isFallback
+        ? 'Planner unavailable - direct response'
+        : plan.reasoning;
+
       // Create response metadata for transparency
       const metadata: ResponseMetadata = ResponseRenderer.createMetadata(
-        plan.actions,
-        plan.reasoning,
+        reportedActions,
+        reportedReasoning,
         routingDecision.modelId, // Use routed model
         personaId
       );
@@ -162,17 +178,25 @@ export class MessageHandler {
       metadata.routingDecision = routingDecision;
 
       // Track planning LLM call
-      const planningCallMetadata = plan.metadata;
+      const planningCallMetadata = plan.isFallback ? undefined : plan.metadata;
 
-      // Update working message: Executing
-      await workingMessage.edit({
-        embeds: [ResponseRenderer.updateWorkingEmbed(workingEmbed, 'executing')],
-      }).catch(() => {});
+      const hasExecutableActions = !plan.isFallback && plan.actions.some(action => action.type !== 'chat');
+      let executionResult: any = { results: [], hasImage: false };
+      let execDuration = 0;
 
-      // EXECUTOR STEP: Execute all planned actions
-      const execStartTime = Date.now();
-      const executionResult = await this.executor.executeActions(plan.actions);
-      const execDuration = Date.now() - execStartTime;
+      if (hasExecutableActions) {
+        // Update working message: Executing
+        await workingMessage.edit({
+          embeds: [ResponseRenderer.updateWorkingEmbed(workingEmbed, 'executing')],
+        }).catch(() => {});
+
+        // EXECUTOR STEP: Execute all planned actions
+        const execStartTime = Date.now();
+        executionResult = await this.executor.executeActions(plan.actions);
+        execDuration = Date.now() - execStartTime;
+      } else {
+        console.log('Skipping action execution (no tool/image actions to run)');
+      }
 
       // Update metadata with execution results
       const updatedMetadata = ResponseRenderer.updateWithExecution(
@@ -302,7 +326,7 @@ export class MessageHandler {
       console.log(
         `Responded to ${message.author.username} in ${message.guild?.name || 'DM'}${
           personaId ? ` (persona: ${personaId})` : ''
-        } with ${plan.actions.length} action(s)`
+        } with ${reportedActions.length} action(s)`
       );
     } catch (error) {
       console.error('Error handling message:', error);
@@ -372,6 +396,80 @@ export class MessageHandler {
     }
     
     return result;
+  }
+
+  /**
+   * Determine whether the planner should run based on the user's request
+   * Only trigger planner when tools, searches, or structured actions are needed
+   */
+  private shouldUsePlanner(userContent: string): boolean {
+    const normalized = userContent.toLowerCase();
+
+    const toolKeywords = [
+      'search',
+      'look up',
+      'lookup',
+      'fetch',
+      'scrape',
+      'crawl',
+      'web result',
+      'web results',
+      'news',
+      'latest news',
+      'current events',
+      'trending',
+      'update the status',
+      'github',
+      'repository',
+      'repo',
+      'readme',
+      'issue #',
+      'pull request',
+      'http://',
+      'https://',
+      'www.',
+      'url',
+      'link please',
+      'image request',
+      'generate an image',
+      'draw an image',
+    ];
+
+    if (toolKeywords.some(keyword => normalized.includes(keyword))) {
+      return true;
+    }
+
+    if (/(https?:\/\/|www\.)/.test(userContent)) {
+      return true;
+    }
+
+    const needsGithubTool = /(github\.com|repo\s|repository\s|pull request|issue\s#)/i.test(userContent);
+    if (needsGithubTool) {
+      return true;
+    }
+
+    const mathPattern = /\d+\s*[\+\-\*\/]\s*\d+/;
+    if (mathPattern.test(userContent) || /(calculate|calculation|sum|difference|multiply|divide|average|percent|percentage)/.test(normalized)) {
+      return true;
+    }
+
+    if (/(convert|conversion|converter|currency|exchange rate|usd|eur|gbp|celsius|fahrenheit|kelvin|miles|kilometers|km|mi)/.test(normalized)) {
+      return true;
+    }
+
+    if (/(what time is it|current time|time zone|timezone|utc offset)/.test(normalized)) {
+      return true;
+    }
+
+    if (/(generate|create|draw|render).*(image|logo|icon|picture|art|banner|scene)/.test(normalized)) {
+      return true;
+    }
+
+    if (/(latest|current|today|recent)\s+(price|prices|status|release|version|weather|forecast|numbers?)/.test(normalized)) {
+      return true;
+    }
+
+    return false;
   }
 
   /**
