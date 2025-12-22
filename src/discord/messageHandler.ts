@@ -915,7 +915,16 @@ Now respond to the user's request conversationally:`,
       let guidedPrompt = responsePrompt;
       if (tier === 'CODING') {
         guidedPrompt = this.addCodingGuidance(responsePrompt);
-      } else if (tier && tier !== 'INSTANT') {
+      } else if (tier === 'INSTANT') {
+        // INSTANT tier: Extra emphasis on being conversational with tool results
+        guidedPrompt = [
+          ...responsePrompt,
+          {
+            role: 'system',
+            content: 'REMINDER: You are chatting casually. Wrap the tool data in friendly conversation. Do NOT just return the raw output.',
+          },
+        ];
+      } else if (tier) {
         guidedPrompt = this.addConciseGuidance(responsePrompt);
       }
       const response = await this.aiService.chatCompletionWithMetadata(guidedPrompt, model);
