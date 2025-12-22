@@ -572,6 +572,30 @@ export class MessageHandler {
   }
 
   /**
+   * Add coding-specific guidance to ensure single-file HTML generation
+   */
+  private addCodingGuidance(messages: Message[]): Message[] {
+    const guidanceMessage: Message = {
+      role: 'system',
+      content: 'IMPORTANT: When generating HTML/CSS/JS, ALWAYS create a single HTML file with inline <style> and <script> tags. Never split into separate files. Put CSS in <head> and JS before </body>. Be concise in explanations.'
+    };
+    
+    // Insert guidance before the last user message
+    const result = [...messages];
+    const lastUserIndex = result.map(m => m.role).lastIndexOf('user');
+    
+    if (lastUserIndex > 0) {
+      result.splice(lastUserIndex, 0, guidanceMessage);
+    } else {
+      result.push(guidanceMessage);
+    }
+    
+    return result;
+  }
+    return result;
+  }
+
+  /**
    * Determine whether the planner should run based on the user's request
    * Only trigger planner when tools, searches, or structured actions are needed
    */
@@ -812,10 +836,13 @@ export class MessageHandler {
 
       if (!hasToolResults) {
         // No tool results, just do normal chat WITH METADATA
-        // Add concise output guidance for non-INSTANT tiers only
-        const messagesWithGuidance = (tier && tier !== 'INSTANT') 
-          ? this.addConciseGuidance(conversationMessages)
-          : conversationMessages;
+        // Add tier-specific guidance
+        let messagesWithGuidance = conversationMessages;
+        if (tier === 'CODING') {
+          messagesWithGuidance = this.addCodingGuidance(conversationMessages);
+        } else if (tier && tier !== 'INSTANT') {
+          messagesWithGuidance = this.addConciseGuidance(conversationMessages);
+        }
         const response = await this.aiService.chatCompletionWithMetadata(messagesWithGuidance, model);
         return { content: response.content, metadata: response.metadata };
       }
@@ -839,10 +866,13 @@ export class MessageHandler {
         },
       ];
 
-      // Add concise output guidance for non-INSTANT tiers only
-      const guidedPrompt = (tier && tier !== 'INSTANT')
-        ? this.addConciseGuidance(responsePrompt)
-        : responsePrompt;
+      // Add tier-specific guidance
+      let guidedPrompt = responsePrompt;
+      if (tier === 'CODING') {
+        guidedPrompt = this.addCodingGuidance(responsePrompt);
+      } else if (tier && tier !== 'INSTANT') {
+        guidedPrompt = this.addConciseGuidance(responsePrompt);
+      }
       const response = await this.aiService.chatCompletionWithMetadata(guidedPrompt, model);
 
       // Ensure valid response
