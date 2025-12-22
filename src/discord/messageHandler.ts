@@ -128,7 +128,15 @@ export class MessageHandler {
       // Log the raw user message (plain text) - fire-and-forget, non-blocking
       setImmediate(() => {
         try {
-          this.chatLogger.logUserMessage(message.author.username, message.content, guildId, channelId, userId);
+          const guildName = message.guild?.name || null;
+          const channelName = (message.channel as any).name || 'direct-message';
+          this.chatLogger.logUserMessage(
+            message.author.username,
+            message.content,
+            userId,
+            guildName,
+            channelName
+          );
         } catch (err) {
           // Logging failures must never affect bot behavior
         }
@@ -244,14 +252,22 @@ export class MessageHandler {
         
         // Log image generation to disk - fire-and-forget, non-blocking
         if (message.guild && message.author.username) {
-          const guildId = message.guild.id;
-          const channelId = message.channel.id;
           const userId = message.author.id;
           const buffer = executionResult.imageData.buffer;
+          const prompt = executionResult.imageData.prompt;
           const username = message.author.username;
+          const guildName = message.guild.name;
+          const channelName = (message.channel as any).name || 'unknown';
           setImmediate(() => {
             try {
-              this.chatLogger.logImageGeneration(buffer, username, guildId, channelId, userId);
+              this.chatLogger.logImageGeneration(
+                buffer,
+                prompt,
+                username,
+                userId,
+                guildName,
+                channelName
+              );
             } catch (err) {
               // Logging failures must never affect bot behavior
             }
@@ -371,7 +387,15 @@ export class MessageHandler {
           // Log final bot reply (plain text) - fire-and-forget, non-blocking
           setImmediate(() => {
             try {
-              this.chatLogger.logBotReply(finalResponse, guildId, channelId, userId);
+              const guildName = message.guild?.name || null;
+              const channelName = (message.channel as any).name || 'direct-message';
+              this.chatLogger.logBotReply(
+                finalResponse,
+                message.author.username,
+                userId,
+                guildName,
+                channelName
+              );
             } catch (err) {
               // Logging failures must never affect bot behavior
             }
@@ -1277,13 +1301,20 @@ export class MessageHandler {
           
           // Log image generation to disk - fire-and-forget, non-blocking
           if (interaction.guild && interaction.user.username) {
-            const guildId = interaction.guild.id;
-            const channelId = interaction.channelId;
             const userId = interaction.user.id;
             const username = interaction.user.username;
+            const guildName = interaction.guild.name;
+            const channelName = (interaction.channel as any)?.name || 'unknown';
             setImmediate(() => {
               try {
-                this.chatLogger.logImageGeneration(buffer, username, guildId, channelId, userId);
+                this.chatLogger.logImageGeneration(
+                  buffer,
+                  prompt,
+                  username,
+                  userId,
+                  guildName,
+                  channelName
+                );
               } catch (err) {
                 // Logging failures must never affect bot behavior
               }

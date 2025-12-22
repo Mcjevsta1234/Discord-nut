@@ -1,9 +1,6 @@
 import fs from 'fs';
 import path from 'path';
 
-type GuildId = string | null | undefined;
-type ChannelId = string | null | undefined;
-
 /**
  * ChatLogger: Fire-and-forget conversation and image logging
  * 
@@ -13,12 +10,78 @@ type ChannelId = string | null | undefined;
  * - Callers should wrap calls in setImmediate() for non-blocking execution
  * - No async operations to avoid race conditions with message flow
  * - All file writes use synchronous fs methods for reliability
+ * 
+ * Directory structure:
+ * logs/{username}/{guildName}/{channelName}/YYYY-MM-DD.txt
+ * logs/{username}/{guildName}/{channelName}/images/
  */
 export class ChatLogger {
   private baseDir: string;
+  private userIdMap: Map<string, string>; // username -> userId mapping for collision detection
 
   constructor(baseDir: string = 'logs') {
     this.baseDir = baseDir;
+    this.userIdMap = new Map();
+  }
+
+  /**
+   * Sanitize names for filesystem use
+   * - lowercase
+   * - spaces to underscores
+   * - remove invalid characters
+   * - max 64 chars
+   */
+  private sanitizeName(name: string): string {
+    return name
+      .toLowerCase()
+      .replace(/\s+/g, '_')
+      .replace(/[^a-z0-9_-]/g, '')
+      .slice(0, 64);
+  }
+
+  /**
+   * Get sanitized username with collision handling
+   * Appends __{last6OfUserId} if username collision detected
+   */
+  private getSanitizedUsername(username: string, userId: string): string {
+    const sanitized = this.sanitizeName(username);
+    const userDir = path.join(this.baseDir, sanitized);
+    
+    // Check for existing username folder
+    if (fs.existsSync(userDir)) {
+      const mappedUserId = this.userIdMap.get(sanitized);
+      
+      // If no mapping exists, read from filesystem marker
+      if (!mappedUserId) {
+        const markerPath = path.join(userDir, '.userid');
+        if (fs.existsSync(markerPath)) {
+          const storedId = fs.readFileSync(markerPath, 'utf-8').trim();
+          this.userIdMap.set(sanitized, storedId);
+          
+          // Collision detected
+          if (storedId !== userId) {
+            const suffix = userId.slice(-6);
+            return `${sanitized}__${suffix}`;
+          }
+        } else {
+          // No marker, create one
+          fs.writeFileSync(markerPath, userId, 'utf-8');
+          this.userIdMap.set(sanitized, userId);
+        }
+      } else if (mappedUserId !== userId) {
+        // Collision detected via in-memory map
+        const suffix = userId.slice(-6);
+        return `${sanitized}__${suffix}`;
+      }
+    } else {
+      // New user, create directory and marker
+      fs.mkdirSync(userDir, { recursive: true });
+      const markerPath = path.join(userDir, '.userid');
+      fs.writeFileSync(markerPath, userId, 'utf-8');
+      this.userIdMap.set(sanitized, userId);
+    }
+    
+    return sanitized;
   }
 
   private getDateString(): string {
@@ -29,19 +92,24 @@ export class ChatLogger {
     return `${yyyy}-${mm}-${dd}`;
   }
 
-  private getFilePath(guildId: GuildId, channelId: ChannelId, userId: string): string {
+  private getFilePath(
+    username: string,
+    userId: string,
+    guildName: string | null,
+    channelName: string
+  ): string {
     const dateStr = this.getDateString();
-    const subdir = guildId
-      ? path.join(
-          this.baseDir,
-          'guilds',
-          String(guildId),
-          'channels',
-          String(channelId ?? 'unknown'),
-          'users',
-          String(userId)
-        )
-      : path.join(this.baseDir, 'dms', 'users', String(userId));
+    const sanitizedUsername = this.getSanitizedUsername(username, userId);
+    const sanitizedGuildName = guildName ? this.sanitizeName(guildName) : 'dms';
+    const sanitizedChannelName = this.sanitizeName(channelName);
+    
+    const subdir = path.join(
+      this.baseDir,
+      sanitizedUsername,
+      sanitizedGuildName,
+      sanitizedChannelName
+    );
+    
     return path.join(subdir, `${dateStr}.txt`);
   }
 
@@ -52,9 +120,15 @@ export class ChatLogger {
     }
   }
 
-  logUserMessage(username: string, message: string, guildId: GuildId, channelId: ChannelId, userId: string): void {
+  logUserMessage(
+    username: string,
+    message: string,
+    userId: string,
+    guildName: string | null,
+    channelName: string
+  ): void {
     try {
-      const filePath = this.getFilePath(guildId, channelId, userId);
+      const filePath = this.getFilePath(username, userId, guildName, channelName);
       this.ensureDir(filePath);
       const cleanMessage = this.cleanNewlines(message);
       fs.appendFileSync(filePath, `${username}: ${cleanMessage}\n`);
@@ -63,9 +137,15 @@ export class ChatLogger {
     }
   }
 
-  logBotReply(reply: string, guildId: GuildId, channelId: ChannelId, userId: string): void {
+  logBotReply(
+    reply: string,
+    username: string,
+    userId: string,
+    guildName: string | null,
+    channelName: string
+  ): void {
     try {
-      const filePath = this.getFilePath(guildId, channelId, userId);
+      const filePath = this.getFilePath(username, userId, guildName, channelName);
       this.ensureDir(filePath);
       const cleanReply = this.cleanNewlines(reply);
       fs.appendFileSync(filePath, `bot: ${cleanReply}\n`);
@@ -75,19 +155,20 @@ export class ChatLogger {
   }
 
   /**
-   * Save generated image to disk and log reference
+   * Save generated image to disk and log reference with prompt
    * @returns The relative path to the saved image
    */
   logImageGeneration(
     buffer: Buffer,
+    prompt: string,
     username: string,
-    guildId: GuildId,
-    channelId: ChannelId,
-    userId: string
+    userId: string,
+    guildName: string | null,
+    channelName: string
   ): string {
     try {
       // Build paths
-      const logFilePath = this.getFilePath(guildId, channelId, userId);
+      const logFilePath = this.getFilePath(username, userId, guildName, channelName);
       const logDir = path.dirname(logFilePath);
       const imagesDir = path.join(logDir, 'images');
 
@@ -100,15 +181,18 @@ export class ChatLogger {
       const now = new Date();
       const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
       const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '');
-      const filename = `${username}-${dateStr}-${timeStr}.png`;
+      const sanitizedUsername = this.sanitizeName(username);
+      const filename = `${sanitizedUsername}-${dateStr}-${timeStr}.png`;
       const fullPath = path.join(imagesDir, filename);
 
       // Save image to disk
       fs.writeFileSync(fullPath, buffer);
 
-      // Log reference with relative path
+      // Log both prompt and image reference
       const relativePath = `images/${filename}`;
       this.ensureDir(logFilePath);
+      const cleanPrompt = this.cleanNewlines(prompt);
+      fs.appendFileSync(logFilePath, `bot: [image prompt: ${cleanPrompt}]\n`, 'utf-8');
       fs.appendFileSync(logFilePath, `bot: [image generated: ${relativePath}]\n`, 'utf-8');
 
       return relativePath;
