@@ -592,8 +592,6 @@ export class MessageHandler {
     
     return result;
   }
-    return result;
-  }
 
   /**
    * Determine whether the planner should run based on the user's request
