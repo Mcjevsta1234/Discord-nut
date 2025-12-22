@@ -44,7 +44,7 @@ export class ProgressTracker {
   // Simple spinner loader
   private spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
   private lastUpdateTime = 0;
-  private minUpdateInterval = 1500; // Discord rate limit: max 5 edits per 5 seconds = 1 per second minimum
+  private minUpdateInterval = 1000; // Discord rate limit: max 5 edits per 5 seconds = 1 per second
   private isClosed = false;
   private pendingUpdate = false;
   
@@ -101,7 +101,7 @@ export class ProgressTracker {
       } finally {
         this.pendingUpdate = false;
       }
-    }, 1500); // Check every 1.5 seconds, matching our minimum interval
+    }, 1000); // Check every 1 second, matching our minimum interval
   }
 
   /**
@@ -218,8 +218,42 @@ export class ProgressTracker {
    * Update snake game state
    */
   private updateSnakeGame(): void {
+    // Intelligent movement: move towards apple
+    const currentHead = this.snakeBody[0];
+    const dx = this.appleX - currentHead.x;
+    const dy = this.appleY - currentHead.y;
+    
+    // Determine best direction to move towards apple
+    // Prioritize the axis with the larger distance
+    let targetDirection = this.direction;
+    
+    if (Math.abs(dx) > Math.abs(dy)) {
+      // Move horizontally
+      if (dx > 0) {
+        targetDirection = 1; // right
+      } else if (dx < 0) {
+        targetDirection = 3; // left
+      }
+    } else if (dy !== 0) {
+      // Move vertically
+      if (dy > 0) {
+        targetDirection = 2; // down
+      } else if (dy < 0) {
+        targetDirection = 0; // up
+      }
+    }
+    
+    // Avoid going backwards into own body
+    const oppositeDirection = (targetDirection + 2) % 4;
+    if (this.direction !== oppositeDirection) {
+      this.direction = targetDirection;
+    } else {
+      // If target direction is backwards, try a perpendicular direction
+      this.direction = (this.direction + 1) % 4;
+    }
+    
     // Move snake head
-    const head = { ...this.snakeBody[0] };
+    const head = { ...currentHead };
     
     switch (this.direction) {
       case 0: head.y--; break; // up
@@ -240,17 +274,21 @@ export class ProgressTracker {
     // Check if ate apple
     if (head.x === this.appleX && head.y === this.appleY) {
       this.score++;
-      // Spawn new apple
-      this.appleX = Math.floor(Math.random() * this.gameWidth);
-      this.appleY = Math.floor(Math.random() * this.gameHeight);
+      // Spawn new apple, avoiding snake body
+      let newX: number = 0;
+      let newY: number = 0;
+      let attempts = 0;
+      do {
+        newX = Math.floor(Math.random() * this.gameWidth);
+        newY = Math.floor(Math.random() * this.gameHeight);
+        attempts++;
+      } while (attempts < 100 && this.snakeBody.some(s => s.x === newX && s.y === newY));
+      
+      this.appleX = newX;
+      this.appleY = newY;
     } else {
       // Remove tail if didn't eat apple
       this.snakeBody.pop();
-    }
-    
-    // Randomly change direction sometimes for variety
-    if (Math.random() < 0.3) {
-      this.direction = (this.direction + (Math.random() < 0.5 ? 1 : -1) + 4) % 4;
     }
   }
 
