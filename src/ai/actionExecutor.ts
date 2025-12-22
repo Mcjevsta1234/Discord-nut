@@ -28,6 +28,17 @@ export interface ExecutionResult {
   };
 }
 
+/**
+ * Callback for action execution progress
+ */
+export type ActionProgressCallback = (update: {
+  actionIndex: number;
+  totalActions: number;
+  action: PlannedAction;
+  status: 'starting' | 'completed' | 'failed';
+  result?: ActionResult;
+}) => void | Promise<void>;
+
 export class ActionExecutor {
   private aiService: OpenRouterService;
   private imageService: ImageService;
@@ -37,7 +48,10 @@ export class ActionExecutor {
     this.imageService = new ImageService();
   }
 
-  async executeActions(actions: PlannedAction[]): Promise<ExecutionResult> {
+  async executeActions(
+    actions: PlannedAction[],
+    progressCallback?: ActionProgressCallback
+  ): Promise<ExecutionResult> {
     const results: ActionResult[] = [];
     let hasImage = false;
     let imageData: ExecutionResult['imageData'];
@@ -46,8 +60,29 @@ export class ActionExecutor {
       const action = actions[i];
       console.log(`Executing action ${i + 1}/${actions.length}: ${action.type}${action.toolName ? ` (${action.toolName})` : ''}`);
 
+      // Report starting
+      if (progressCallback) {
+        await progressCallback({
+          actionIndex: i,
+          totalActions: actions.length,
+          action,
+          status: 'starting',
+        });
+      }
+
       const result = await this.executeAction(action);
       results.push(result);
+
+      // Report completion
+      if (progressCallback) {
+        await progressCallback({
+          actionIndex: i,
+          totalActions: actions.length,
+          action,
+          status: result.success ? 'completed' : 'failed',
+          result,
+        });
+      }
 
       if (result.success && result.imageBuffer) {
         hasImage = true;

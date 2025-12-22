@@ -8,7 +8,7 @@ import { PromptManager } from './promptManager';
 import { Planner, ActionPlan } from '../ai/planner';
 import { ActionExecutor } from '../ai/actionExecutor';
 import { MCPToolResult } from '../mcp';
-import { ResponseRenderer, ResponseMetadata } from './responseRenderer';
+import { ResponseRenderer, ResponseMetadata, ProgressTracker } from './responseRenderer';
 import { aggregateLLMMetadata, LLMResponseMetadata } from '../ai/llmMetadata';
 import { RouterService } from '../ai/routerService';
 import { RoutingDecision } from '../ai/modelTiers';
@@ -153,274 +153,354 @@ export class MessageHandler {
         personaId
       );
 
-      // Send working message immediately with new renderer
+      // Create progress tracker with animated spinner
       const workingEmbed = ResponseRenderer.createWorkingEmbed(message.content);
       const workingMessage = await message.reply({ embeds: [workingEmbed] });
+      const progressTracker = ResponseRenderer.createProgressTracker(workingMessage, message.content);
 
-      // ROUTING STEP: Determine which model tier to use
-      console.log(`🎯 Routing message from ${message.author.username}...`);
-      const routingDecision = await this.router.route(
-        message.content,
-        composedPrompt.messages,
-        message.content.length
-      );
-
-      // PLANNER STEP: Decide what actions to take
-      // For INSTANT tier, use synthetic planning (no LLM call = save tokens)
-      const planStartTime = Date.now();
-      let plan: ActionPlan;
-      const plannerNeeded = routingDecision.tier === 'INSTANT'
-        ? true
-        : this.shouldUsePlanner(message.content);
-      
-      if (routingDecision.tier === 'INSTANT') {
-        // Synthetic planning for INSTANT tier (no LLM call)
-        plan = this.planner.createSyntheticPlanForInstant();
-        console.log(`Action plan: INSTANT tier (synthetic, no LLM call)`);
-      } else if (!plannerNeeded) {
-        plan = {
-          actions: [{ type: 'chat' }],
-          reasoning: 'Direct response (no tools required)',
-          metadata: undefined,
-          isFallback: false,
-        };
-        console.log('Action plan: direct response (planner skipped)');
-      } else {
-        // LLM-based planning for other tiers
-        // FIX: Provide loaded file context (previous messages) to planner,
-        // and let planner add the current user message itself.
-        plan = await this.planner.planActionsWithRetry(
+      try {
+        // ROUTING STEP: Determine which model tier to use
+        await progressTracker.addUpdate({
+          stage: 'planning',
+          message: 'Analyzing request and routing...',
+          timestamp: Date.now(),
+        });
+        
+        console.log(`🎯 Routing message from ${message.author.username}...`);
+        const routingDecision = await this.router.route(
           message.content,
-          fileContext,
+          composedPrompt.messages,
+          message.content.length
+        );
+
+        // PLANNER STEP: Decide what actions to take
+        await progressTracker.addUpdate({
+          stage: 'planning',
+          message: 'Planning response strategy...',
+          timestamp: Date.now(),
+        });
+
+        const planStartTime = Date.now();
+        let plan: ActionPlan;
+        const plannerNeeded = routingDecision.tier === 'INSTANT'
+          ? true
+          : this.shouldUsePlanner(message.content);
+        
+        if (routingDecision.tier === 'INSTANT') {
+          // Synthetic planning for INSTANT tier (no LLM call)
+          plan = this.planner.createSyntheticPlanForInstant();
+          console.log(`Action plan: INSTANT tier (synthetic, no LLM call)`);
+        } else if (!plannerNeeded) {
+          plan = {
+            actions: [{ type: 'chat' }],
+            reasoning: 'Direct response (no tools required)',
+            metadata: undefined,
+            isFallback: false,
+          };
+          console.log('Action plan: direct response (planner skipped)');
+        } else {
+          // LLM-based planning for other tiers
+          plan = await this.planner.planActionsWithRetry(
+            message.content,
+            fileContext,
+            personaId
+          );
+          console.log(`Action plan: ${plan.actions.map(a => a.type).join(' → ')}`);
+        }
+
+        const reportedActions = plan.isFallback ? [] : plan.actions;
+        const reportedReasoning = plan.isFallback
+          ? 'Planner unavailable - direct response'
+          : plan.reasoning;
+
+        // Show plan summary
+        if (reportedActions.length > 0) {
+          const actionSummary = reportedActions
+            .map(a => {
+              if (a.type === 'tool') return `${a.toolName}`;
+              if (a.type === 'image') return 'image generation';
+              return a.type;
+            })
+            .filter(Boolean)
+            .join(', ');
+          
+          await progressTracker.addUpdate({
+            stage: 'planning',
+            message: 'Plan created',
+            details: actionSummary,
+            timestamp: Date.now(),
+          });
+        }
+
+        // Create response metadata for transparency
+        const metadata: ResponseMetadata = ResponseRenderer.createMetadata(
+          reportedActions,
+          reportedReasoning,
+          routingDecision.modelId,
           personaId
         );
-        console.log(`Action plan: ${plan.actions.map(a => a.type).join(' → ')}`);
-      }
 
-      const reportedActions = plan.isFallback ? [] : plan.actions;
-      const reportedReasoning = plan.isFallback
-        ? 'Planner unavailable - direct response'
-        : plan.reasoning;
+        metadata.routingDecision = routingDecision;
+        const planningCallMetadata = plan.isFallback ? undefined : plan.metadata;
 
-      // Create response metadata for transparency
-      const metadata: ResponseMetadata = ResponseRenderer.createMetadata(
-        reportedActions,
-        reportedReasoning,
-        routingDecision.modelId, // Use routed model
-        personaId
-      );
+        const hasExecutableActions = !plan.isFallback && plan.actions.some(action => action.type !== 'chat');
+        let executionResult: any = { results: [], hasImage: false };
+        let execDuration = 0;
 
-      // Add routing decision to metadata
-      metadata.routingDecision = routingDecision;
+        if (hasExecutableActions) {
+          await progressTracker.addUpdate({
+            stage: 'executing',
+            message: `Executing ${plan.actions.length} action(s)...`,
+            timestamp: Date.now(),
+          });
 
-      // Track planning LLM call
-      const planningCallMetadata = plan.isFallback ? undefined : plan.metadata;
+          // EXECUTOR STEP: Execute all planned actions with progress callbacks
+          const execStartTime = Date.now();
+          executionResult = await this.executor.executeActions(
+            plan.actions,
+            async (update) => {
+              // Report each action progressively
+              const actionDesc = update.action.type === 'tool'
+                ? update.action.toolName
+                : update.action.type === 'image'
+                ? 'Generating image'
+                : update.action.type;
+              
+              if (update.status === 'starting') {
+                await progressTracker.addUpdate({
+                  stage: 'executing',
+                  message: `Running: ${actionDesc}`,
+                  stepNumber: update.actionIndex + 1,
+                  totalSteps: update.totalActions,
+                  timestamp: Date.now(),
+                });
+              } else if (update.status === 'completed') {
+                await progressTracker.addUpdate({
+                  stage: 'executing',
+                  message: `Completed: ${actionDesc}`,
+                  stepNumber: update.actionIndex + 1,
+                  totalSteps: update.totalActions,
+                  timestamp: Date.now(),
+                });
+              } else if (update.status === 'failed') {
+                await progressTracker.addUpdate({
+                  stage: 'executing',
+                  message: `Failed: ${actionDesc}`,
+                  details: update.result?.error,
+                  timestamp: Date.now(),
+                });
+              }
+            }
+          );
+          execDuration = Date.now() - execStartTime;
+        } else {
+          console.log('Skipping action execution (no tool/image actions to run)');
+        }
 
-      const hasExecutableActions = !plan.isFallback && plan.actions.some(action => action.type !== 'chat');
-      let executionResult: any = { results: [], hasImage: false };
-      let execDuration = 0;
+        // Update metadata with execution results
+        const updatedMetadata = ResponseRenderer.updateWithExecution(
+          metadata,
+          executionResult.results,
+          execDuration
+        );
 
-      if (hasExecutableActions) {
-        // Update working message: Executing
-        await workingMessage.edit({
-          embeds: [ResponseRenderer.updateWorkingEmbed(workingEmbed, 'executing')],
-        }).catch(() => {});
+        // Handle image response separately if generated
+        if (executionResult.hasImage && executionResult.imageData) {
+          updatedMetadata.llmMetadata = aggregateLLMMetadata(
+            planningCallMetadata,
+            [],
+            undefined
+          );
+          
+          if (message.guild && message.author.username) {
+            const userId = message.author.id;
+            const buffer = executionResult.imageData.buffer;
+            const prompt = executionResult.imageData.prompt;
+            const username = message.author.username;
+            const guildName = message.guild.name;
+            const channelName = (message.channel as any).name || 'unknown';
+            setImmediate(() => {
+              try {
+                this.chatLogger.logImageGeneration(
+                  buffer,
+                  prompt,
+                  username,
+                  userId,
+                  guildName,
+                  channelName
+                );
+              } catch (err) {
+                // Logging failures must never affect bot behavior
+              }
+            });
+          }
+          
+          await progressTracker.complete();
+          progressTracker.close();
+          
+          await this.sendImageResponseWithRenderer(
+            message,
+            executionResult,
+            updatedMetadata,
+            progressTracker.getMessage()
+          );
+          return;
+        }
 
-        // EXECUTOR STEP: Execute all planned actions
-        const execStartTime = Date.now();
-        executionResult = await this.executor.executeActions(plan.actions);
-        execDuration = Date.now() - execStartTime;
-      } else {
-        console.log('Skipping action execution (no tool/image actions to run)');
-      }
+        // Generate final response
+        await progressTracker.addUpdate({
+          stage: 'responding',
+          message: 'Generating response...',
+          timestamp: Date.now(),
+        });
 
-      // Update metadata with execution results
-      const updatedMetadata = ResponseRenderer.updateWithExecution(
-        metadata,
-        executionResult.results,
-        execDuration
-      );
+        let finalPrompt: Message[];
+        if (routingDecision.tier === 'INSTANT') {
+          const minimalComposed = this.promptManager.composeMinimalPromptForInstant(
+            channelId,
+            userMessage,
+            personaId
+          );
+          const systemBase = minimalComposed.messages.filter(m => m.role === 'system');
+          finalPrompt = [...systemBase, ...fileContext, userMessage];
+          console.log(`💰 INSTANT tier: using minimal prompt with file context (${finalPrompt.length} messages)`);
+        } else {
+          const systemBase = composedPrompt.messages.filter(m => m.role === 'system');
+          finalPrompt = [...systemBase, ...fileContext, userMessage];
+        }
 
-      // Handle image response separately if generated
-      if (executionResult.hasImage && executionResult.imageData) {
-        // Add LLM metadata before sending
+        const responseResult = await this.generateFinalResponseWithMetadata(
+          message.content,
+          executionResult,
+          finalPrompt,
+          routingDecision.modelId,
+          routingDecision.tier
+        );
+
+        let finalResponse = responseResult.content;
+        let responseCallMetadata = responseResult.metadata;
+
+        // GUARDRAIL: Check if INSTANT tier response is low-confidence or malformed
+        if (routingDecision.tier === 'INSTANT' && this.isLowQualityResponse(finalResponse)) {
+          console.log('⚠️ INSTANT response appears low-quality, retrying with SMART tier...');
+          
+          await progressTracker.addUpdate({
+            stage: 'responding',
+            message: 'Retrying with higher quality model...',
+            timestamp: Date.now(),
+          });
+          
+          const higherTier = this.router.getHigherTier(routingDecision.tier);
+          const retryDecision = this.router.createManualDecision(higherTier, 'INSTANT tier retry due to low confidence');
+          
+          const retryResult = await this.generateFinalResponseWithMetadata(
+            message.content,
+            executionResult,
+            composedPrompt.messages,
+            retryDecision.modelId,
+            retryDecision.tier
+          );
+          
+          finalResponse = retryResult.content;
+          responseCallMetadata = retryResult.metadata;
+          
+          updatedMetadata.routingDecision = {
+            ...retryDecision,
+            routingReason: `${routingDecision.routingReason} → Retried with ${higherTier} (low quality detected)`,
+          };
+          
+          console.log(`✅ Retry successful with ${higherTier} tier`);
+        }
+
+        // Complete progress tracking
+        await progressTracker.complete();
+        progressTracker.close();
+
+        // Add assistant response to memory
+        if (finalResponse && !finalResponse.includes('encountered an error')) {
+          await this.memoryManager.addMessage(channelId, {
+            role: 'assistant',
+            content: finalResponse,
+          });
+        }
+
+        // Aggregate all LLM metadata
         updatedMetadata.llmMetadata = aggregateLLMMetadata(
           planningCallMetadata,
           [],
-          undefined
+          responseCallMetadata
         );
-        
-        // Log image generation to disk - fire-and-forget, non-blocking
-        if (message.guild && message.author.username) {
-          const userId = message.author.id;
-          const buffer = executionResult.imageData.buffer;
-          const prompt = executionResult.imageData.prompt;
-          const username = message.author.username;
-          const guildName = message.guild.name;
-          const channelName = (message.channel as any).name || 'unknown';
-          setImmediate(() => {
-            try {
-              this.chatLogger.logImageGeneration(
-                buffer,
-                prompt,
-                username,
-                userId,
-                guildName,
-                channelName
-              );
-            } catch (err) {
-              // Logging failures must never affect bot behavior
-            }
-          });
-        }
-        
-        await this.sendImageResponseWithRenderer(
-          message,
-          executionResult,
+
+        // Render and send complete response
+        const rendered = ResponseRenderer.render(
           updatedMetadata,
-          workingMessage
+          finalResponse,
+          message.guildId || undefined,
+          channelId
         );
-        return;
-      }
-
-      // Update working message: Responding
-      await workingMessage.edit({
-        embeds: [ResponseRenderer.updateWorkingEmbed(workingEmbed, 'responding')],
-      }).catch(() => {});
-
-      // RESPONDER STEP: Generate final response WITH METADATA
-      // Build final LLM payload with strict ordering:
-      // messages = [ ...system/persona, ...loadedContext, { user } ]
-      let finalPrompt: Message[];
-      if (routingDecision.tier === 'INSTANT') {
-        const minimalComposed = this.promptManager.composeMinimalPromptForInstant(
-          channelId,
-          userMessage,
-          personaId
+        const sentMessage = await ResponseRenderer.sendToDiscord(
+          message,
+          rendered,
+          progressTracker.getMessage()
         );
-        const systemBase = minimalComposed.messages.filter(m => m.role === 'system');
-        finalPrompt = [...systemBase, ...fileContext, userMessage];
-        console.log(`💰 INSTANT tier: using minimal prompt with file context (${finalPrompt.length} messages)`);
-      } else {
-        const systemBase = composedPrompt.messages.filter(m => m.role === 'system');
-        finalPrompt = [...systemBase, ...fileContext, userMessage];
-      }
 
-      const responseResult = await this.generateFinalResponseWithMetadata(
-        message.content,
-        executionResult,
-        finalPrompt,
-        routingDecision.modelId, // Use routed model
-        routingDecision.tier // Pass tier to control concise guidance
-      );
-
-      let finalResponse = responseResult.content;
-      let responseCallMetadata = responseResult.metadata;
-
-      // GUARDRAIL: Check if INSTANT tier response is low-confidence or malformed
-      if (routingDecision.tier === 'INSTANT' && this.isLowQualityResponse(finalResponse)) {
-        console.log('⚠️ INSTANT response appears low-quality, retrying with SMART tier...');
-        
-        // Retry with SMART tier
-        const higherTier = this.router.getHigherTier(routingDecision.tier);
-        const retryDecision = this.router.createManualDecision(higherTier, 'INSTANT tier retry due to low confidence');
-        
-        const retryResult = await this.generateFinalResponseWithMetadata(
-          message.content,
-          executionResult,
-          composedPrompt.messages,
-          retryDecision.modelId,
-          retryDecision.tier // Pass tier for concise guidance
-        );
-        
-        finalResponse = retryResult.content;
-        responseCallMetadata = retryResult.metadata;
-        
-        // Update routing decision in metadata to reflect retry
-        updatedMetadata.routingDecision = {
-          ...retryDecision,
-          routingReason: `${routingDecision.routingReason} → Retried with ${higherTier} (low quality detected)`,
-        };
-        
-        console.log(`✅ Retry successful with ${higherTier} tier`);
-      }
-
-      // Add assistant response to memory (but not tool errors)
-      if (finalResponse && !finalResponse.includes('encountered an error')) {
-        await this.memoryManager.addMessage(channelId, {
-          role: 'assistant',
-          content: finalResponse,
-        });
-      }
-
-      // Aggregate all LLM metadata
-      updatedMetadata.llmMetadata = aggregateLLMMetadata(
-        planningCallMetadata,
-        [],
-        responseCallMetadata
-      );
-
-      // Render and send complete response with full transparency
-      const rendered = ResponseRenderer.render(
-        updatedMetadata,
-        finalResponse,
-        message.guildId || undefined,
-        channelId
-      );
-      const sentMessage = await ResponseRenderer.sendToDiscord(
-        message,
-        rendered,
-        workingMessage
-      );
-
-      // PERSIST CONTEXT: Append user message + final response to file storage
-      // Only store plain text, not embeds/metadata (isolation per user + channel/DM)
-      if (sentMessage && finalResponse && !finalResponse.includes('encountered an error')) {
-        try {
-          const cleanResponse: Message = {
-            role: 'assistant',
-            content: finalResponse,
-          };
-          // Persist user + assistant messages using ContextService
-          await this.contextService.appendUserAndAssistant(userId, userMessage, cleanResponse, channelId, guildId);
-          console.log(`✓ Persisted context: user + response for user ${userId}`);
-          // Log final bot reply (plain text) - fire-and-forget, non-blocking
-          setImmediate(() => {
-            try {
-              const guildName = message.guild?.name || null;
-              const channelName = (message.channel as any).name || 'direct-message';
-              this.chatLogger.logBotReply(
-                finalResponse,
-                message.author.username,
-                userId,
-                guildName,
-                channelName
-              );
-            } catch (err) {
-              // Logging failures must never affect bot behavior
-            }
-          });
-        } catch (error) {
-          console.error('Failed to persist context to file:', error);
+        // PERSIST CONTEXT
+        if (sentMessage && finalResponse && !finalResponse.includes('encountered an error')) {
+          try {
+            const cleanResponse: Message = {
+              role: 'assistant',
+              content: finalResponse,
+            };
+            await this.contextService.appendUserAndAssistant(userId, userMessage, cleanResponse, channelId, guildId);
+            console.log(`✓ Persisted context: user + response for user ${userId}`);
+            
+            setImmediate(() => {
+              try {
+                const guildName = message.guild?.name || null;
+                const channelName = (message.channel as any).name || 'direct-message';
+                this.chatLogger.logBotReply(
+                  finalResponse,
+                  message.author.username,
+                  userId,
+                  guildName,
+                  channelName
+                );
+              } catch (err) {
+                // Logging failures must never affect bot behavior
+              }
+            });
+          } catch (error) {
+            console.error('Failed to persist context to file:', error);
+          }
         }
-      }
 
-      // Track context
-      if (sentMessage && personaId) {
-        this.promptManager.trackMessagePersona(sentMessage.id, personaId);
-        this.messageContexts.set(sentMessage.id, {
-          userContent: message.content,
-          personaId,
-          channelId,
-          originalMessageId: message.id,
-        });
-      }
+        // Track context
+        if (sentMessage && personaId) {
+          this.promptManager.trackMessagePersona(sentMessage.id, personaId);
+          this.messageContexts.set(sentMessage.id, {
+            userContent: message.content,
+            personaId,
+            channelId,
+            originalMessageId: message.id,
+          });
+        }
 
-      console.log(
-        `Responded to ${message.author.username} in ${message.guild?.name || 'DM'}${
-          personaId ? ` (persona: ${personaId})` : ''
-        } with ${reportedActions.length} action(s)`
-      );
+        console.log(
+          `Responded to ${message.author.username} in ${message.guild?.name || 'DM'}${
+            personaId ? ` (persona: ${personaId})` : ''
+          } with ${reportedActions.length} action(s)`
+        );
+      } catch (innerError) {
+        // Handle errors with progress tracker
+        console.error('Error during processing:', innerError);
+        const errorMsg = innerError instanceof Error ? innerError.message : 'Unknown error occurred';
+        await progressTracker.error('Processing failed', errorMsg);
+        
+        // Give user time to see the error
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        throw innerError; // Re-throw to be caught by outer catch
+      }
     } catch (error) {
       console.error('Error handling message:', error);
       await message.reply(

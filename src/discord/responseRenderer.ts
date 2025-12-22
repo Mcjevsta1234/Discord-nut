@@ -19,6 +19,247 @@ import { DebugMode, DebugSection, shouldShowSection, getDebugMode } from './debu
 import { FileAttachmentHandler, FileContent } from './fileAttachments';
 
 /**
+ * Progress tracking for live UX updates
+ */
+export interface ProgressUpdate {
+  stage: 'planning' | 'executing' | 'responding' | 'complete' | 'error';
+  message: string;
+  details?: string;
+  stepNumber?: number;
+  totalSteps?: number;
+  actionType?: string;
+  actionName?: string;
+  timestamp: number;
+}
+
+/**
+ * Progress tracker for managing animated indicators and incremental updates
+ */
+export class ProgressTracker {
+  private message: DiscordMessage;
+  private embed: EmbedBuilder;
+  private updates: ProgressUpdate[] = [];
+  private updateInterval?: NodeJS.Timeout;
+  private spinnerIndex = 0;
+  private spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+  private lastUpdateTime = 0;
+  private minUpdateInterval = 1500; // Update at most every 1.5 seconds
+  private isClosed = false;
+
+  constructor(message: DiscordMessage, initialEmbed: EmbedBuilder) {
+    this.message = message;
+    this.embed = initialEmbed;
+    this.startAnimatedSpinner();
+  }
+
+  /**
+   * Start animated spinner that updates periodically
+   */
+  private startAnimatedSpinner(): void {
+    this.updateInterval = setInterval(async () => {
+      if (this.isClosed) {
+        this.stopAnimatedSpinner();
+        return;
+      }
+
+      const now = Date.now();
+      if (now - this.lastUpdateTime < this.minUpdateInterval) {
+        return; // Rate limit updates
+      }
+
+      try {
+        this.spinnerIndex = (this.spinnerIndex + 1) % this.spinnerFrames.length;
+        await this.updateDisplay();
+        this.lastUpdateTime = now;
+      } catch (error) {
+        // Message might have been deleted, stop spinner
+        this.stopAnimatedSpinner();
+      }
+    }, 500); // Check every 500ms, but rate-limited to 1.5s
+  }
+
+  /**
+   * Stop the animated spinner
+   */
+  private stopAnimatedSpinner(): void {
+    if (this.updateInterval) {
+      clearInterval(this.updateInterval);
+      this.updateInterval = undefined;
+    }
+  }
+
+  /**
+   * Add a progress update and refresh display
+   */
+  async addUpdate(update: ProgressUpdate): Promise<void> {
+    if (this.isClosed) return;
+
+    this.updates.push(update);
+    
+    // Force immediate update for important stages
+    const forceUpdate = update.stage === 'error' || update.stage === 'complete';
+    if (forceUpdate) {
+      await this.updateDisplay(true);
+    }
+  }
+
+  /**
+   * Update the Discord message with current progress
+   */
+  private async updateDisplay(force = false): Promise<void> {
+    if (this.isClosed) return;
+
+    const now = Date.now();
+    if (!force && now - this.lastUpdateTime < this.minUpdateInterval) {
+      return; // Rate limit
+    }
+
+    try {
+      const description = this.buildProgressDescription();
+      this.embed.setDescription(description);
+      
+      // Update color based on stage
+      const latestUpdate = this.updates[this.updates.length - 1];
+      if (latestUpdate) {
+        if (latestUpdate.stage === 'error') {
+          this.embed.setColor(0xff0000); // Red for error
+        } else if (latestUpdate.stage === 'complete') {
+          this.embed.setColor(0x00ff00); // Green for complete
+        } else {
+          this.embed.setColor(0xffa500); // Orange for in-progress
+        }
+      }
+
+      await this.message.edit({ embeds: [this.embed] });
+      this.lastUpdateTime = now;
+    } catch (error) {
+      // Message might have been deleted
+      this.stopAnimatedSpinner();
+    }
+  }
+
+  /**
+   * Build progress description with incremental updates (append mode)
+   */
+  private buildProgressDescription(): string {
+    if (this.updates.length === 0) {
+      return `${this.getCurrentSpinner()} Processing...`;
+    }
+
+    const lines: string[] = [];
+    
+    // Group updates by stage
+    const latestUpdate = this.updates[this.updates.length - 1];
+    
+    // Show current spinner for active stages
+    const spinner = latestUpdate.stage === 'complete' || latestUpdate.stage === 'error'
+      ? ''
+      : this.getCurrentSpinner() + ' ';
+
+    // Build incremental list of steps
+    for (let i = 0; i < this.updates.length; i++) {
+      const update = this.updates[i];
+      const isLatest = i === this.updates.length - 1;
+      
+      let icon = '';
+      if (update.stage === 'error') {
+        icon = '❌';
+      } else if (update.stage === 'complete') {
+        icon = '✅';
+      } else if (isLatest) {
+        icon = spinner.trim();
+      } else {
+        icon = '✓';
+      }
+      
+      let line = `${icon} ${update.message}`;
+      if (update.details && isLatest) {
+        line += `\n  └ ${update.details}`;
+      }
+      
+      lines.push(line);
+    }
+
+    return lines.join('\n');
+  }
+
+  /**
+   * Get current spinner frame
+   */
+  private getCurrentSpinner(): string {
+    return this.spinnerFrames[this.spinnerIndex];
+  }
+
+  /**
+   * Mark as complete and stop updates
+   */
+  async complete(): Promise<void> {
+    if (this.isClosed) return;
+    
+    this.isClosed = true;
+    this.stopAnimatedSpinner();
+    
+    await this.addUpdate({
+      stage: 'complete',
+      message: 'Processing complete',
+      timestamp: Date.now(),
+    });
+  }
+
+  /**
+   * Mark as failed and stop updates
+   */
+  async error(errorMessage: string, details?: string): Promise<void> {
+    if (this.isClosed) return;
+    
+    this.isClosed = true;
+    this.stopAnimatedSpinner();
+    
+    await this.addUpdate({
+      stage: 'error',
+      message: errorMessage || 'Processing failed',
+      details: details,
+      timestamp: Date.now(),
+    });
+  }
+
+  /**
+   * Handle timeout
+   */
+  async timeout(timeoutSeconds: number): Promise<void> {
+    await this.error(
+      'Request timed out',
+      `Processing took longer than ${timeoutSeconds} seconds`
+    );
+  }
+
+  /**
+   * Handle cancellation
+   */
+  async cancel(reason?: string): Promise<void> {
+    await this.error(
+      'Request cancelled',
+      reason || 'Processing was cancelled'
+    );
+  }
+
+  /**
+   * Close and cleanup
+   */
+  close(): void {
+    this.isClosed = true;
+    this.stopAnimatedSpinner();
+  }
+
+  /**
+   * Get the Discord message being tracked
+   */
+  getMessage(): DiscordMessage {
+    return this.message;
+  }
+}
+
+/**
  * Metadata about the response generation process
  */
 export interface ResponseMetadata {
@@ -526,8 +767,21 @@ export class ResponseRenderer {
     return new EmbedBuilder()
       .setColor(0xffa500) // Orange for in-progress
       .setTitle('⏳ Processing...')
-      .setDescription(`**Query:** ${this.truncate(userQuery, 200)}\n\n🤔 Planning response...`)
+      .setDescription(`**Query:** ${this.truncate(userQuery, 200)}\n\n⠋ Starting...`)
       .setTimestamp();
+  }
+
+  /**
+   * Create a progress tracker for live updates
+   */
+  static createProgressTracker(message: DiscordMessage, userQuery: string): ProgressTracker {
+    const embed = new EmbedBuilder()
+      .setColor(0xffa500)
+      .setTitle('⏳ Processing Your Request')
+      .setDescription(`**Query:** ${this.truncate(userQuery, 200)}\n\n⠋ Initializing...`)
+      .setTimestamp();
+    
+    return new ProgressTracker(message, embed);
   }
 
   /**
