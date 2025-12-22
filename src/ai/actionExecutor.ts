@@ -97,12 +97,11 @@ export class ActionExecutor {
     return { results, hasImage, imageData };
   }
 
-  /**
-   * Execute a single action
-   */
   async executeAction(action: PlannedAction): Promise<ActionResult> {
+    console.log('🔧 ActionExecutor executing:', { type: action.type, toolName: action.toolName, params: action.toolParams });
     try {
       if (action.type === 'tool' && action.toolName) {
+        console.log(`🛠️ Calling tool: ${action.toolName}`);
         return await this.executeTool(action);
       } else if (action.type === 'image') {
         return await this.executeImageGeneration(action);

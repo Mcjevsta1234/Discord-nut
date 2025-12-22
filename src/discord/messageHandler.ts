@@ -220,7 +220,8 @@ export class MessageHandler {
             fileContext,
             personaId
           );
-          console.log(`Action plan: ${plan.actions.map(a => a.type).join(' → ')}`);
+          console.log(`📋 Action plan created: ${plan.actions.map(a => a.type === 'tool' ? `tool(${a.toolName})` : a.type).join(' → ')}`);
+          console.log(`📊 Plan details:`, JSON.stringify(plan, null, 2));
         }
 
         const reportedActions = plan.isFallback ? [] : plan.actions;
@@ -259,6 +260,7 @@ export class MessageHandler {
         const planningCallMetadata = plan.isFallback ? undefined : plan.metadata;
 
         const hasExecutableActions = !plan.isFallback && plan.actions.some(action => action.type !== 'chat');
+        console.log(`🔍 Has executable actions: ${hasExecutableActions}, isFallback: ${plan.isFallback}, actions:`, plan.actions.map(a => a.type));
         let executionResult: any = { results: [], hasImage: false };
         let execDuration = 0;
 

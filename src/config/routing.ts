@@ -149,7 +149,8 @@ export const routingConfig: RoutingConfig = {
   mode: getEnv('ROUTING_MODE', 'hybrid') as RoutingMode,
   
   // Router model used for intelligent routing decisions (should be fast and cheap)
-  routerModelId: getEnv('MODEL_ROUTER', 'meta-llama/llama-3.2-3b-instruct:free'),
+  // Using Gemini Flash - excellent at following instructions and fast routing decisions
+  routerModelId: getEnv('MODEL_ROUTER', 'google/gemini-2.0-flash-exp:free'),
   
   // Confidence threshold: if heuristic confidence < this, use router model
   confidenceThreshold: getEnvNumber('ROUTING_CONFIDENCE_THRESHOLD', 80) / 100,

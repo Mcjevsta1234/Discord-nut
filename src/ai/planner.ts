@@ -47,10 +47,23 @@ export class Planner {
 
     // Heuristic-based tool detection (no LLM cost)
     const normalized = userMessage.toLowerCase();
+    console.log('🔍 INSTANT synthetic planner checking:', normalized);
+
+    // Time queries - ALWAYS use tool, never respond without it
+    if (/(what.?s? the time|what time|current time|time is it|tell.?me.?the.?time|show.?me.?the.?time|time zone|timezone|utc)/.test(normalized)) {
+      console.log('✅ TIME QUERY DETECTED - using get_time tool');
+      return {
+        actions: [{ type: 'tool', toolName: 'get_time', toolParams: {} }],
+        reasoning: 'Time query detected - must use tool',
+        metadata: undefined,
+        isFallback: false,
+      };
+    }
 
     // Math detection
     const mathPattern = /\d+\s*[\+\-\*\/]\s*\d+/;
     if (mathPattern.test(userMessage) || /(calculate|math|sum|multiply|divide|what's|what is)\s+\d+/.test(normalized)) {
+      console.log('✅ MATH DETECTED - using calculate tool');
       return {
         actions: [{ type: 'tool', toolName: 'calculate', toolParams: { expression: userMessage } }],
         reasoning: 'Math calculation detected',
@@ -61,11 +74,9 @@ export class Planner {
 
     // Currency conversion
     if (/(£|€|¥|\$|usd|eur|gbp|jpy|cad|aud|convert|exchange)\s+\d+/.test(normalized) || /\d+\s*(£|€|¥|\$)/.test(userMessage)) {
-      // Extract currency and amount if possible
       const amountMatch = userMessage.match(/(\d+(?:\.\d+)?)\s*([£€¥\$]|usd|eur|gbp|jpy|cad|aud)/i);
-      const targetMatch = userMessage.match(/(?:to|in|as)\s+([£€¥\$]|usd|eur|gbp|jpy|cad|aud)/i);
-      
       if (amountMatch) {
+        console.log('✅ CURRENCY CONVERSION DETECTED');
         return {
           actions: [{ type: 'tool', toolName: 'convert_currency', toolParams: { query: userMessage } }],
           reasoning: 'Currency conversion detected',
@@ -77,6 +88,7 @@ export class Planner {
 
     // Unit conversion
     if (/(ft|meters?|km|miles?|cm|inches?|kg|lbs?|pounds?|celsius|fahrenheit|kelvin|convert|conversion)\s+(?:to|in)/.test(normalized)) {
+      console.log('✅ UNIT CONVERSION DETECTED');
       return {
         actions: [{ type: 'tool', toolName: 'convert_units', toolParams: { query: userMessage } }],
         reasoning: 'Unit conversion detected',
@@ -85,18 +97,9 @@ export class Planner {
       };
     }
 
-    // Time queries - ALWAYS use tool, never respond without it
-    if (/(what time|current time|what's the time|time is it|time zone|timezone|utc offset|tell me the time|show me the time)/.test(normalized)) {
-      return {
-        actions: [{ type: 'tool', toolName: 'get_time', toolParams: {} }],
-        reasoning: 'Time query detected - must use tool',
-        metadata: undefined,
-        isFallback: false,
-      };
-    }
-
     // Minecraft server status - ALWAYS use tool for server queries
     if (/(minecraft|\\bmc\\b|server status|servers? (up|down|online|offline)|are the servers|how are the servers|network status|server ips?|what's the ip|minecraft servers|witchyworlds)/.test(normalized)) {
+      console.log('✅ MINECRAFT STATUS DETECTED - using minecraft_status tool');
       return {
         actions: [{ type: 'tool', toolName: 'minecraft_status', toolParams: {} }],
         reasoning: 'Minecraft server status query detected - must use tool',
@@ -109,6 +112,7 @@ export class Planner {
     if (/(https?:\/\/|www\.)/.test(userMessage)) {
       const urlMatch = userMessage.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/);
       if (urlMatch) {
+        console.log('✅ URL DETECTED - using fetch_url tool');
         return {
           actions: [{ type: 'tool', toolName: 'fetch_url', toolParams: { url: urlMatch[0] } }],
           reasoning: 'URL detected',
@@ -119,6 +123,7 @@ export class Planner {
     }
 
     // Default to chat for everything else
+    console.log('❌ No tool pattern matched - using chat');
     return {
       actions: [{ type: 'chat' }],
       reasoning: 'Conversational response',
