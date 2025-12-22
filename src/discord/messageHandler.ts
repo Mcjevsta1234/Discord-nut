@@ -12,6 +12,7 @@ import { ResponseRenderer, ResponseMetadata } from './responseRenderer';
 import { aggregateLLMMetadata, LLMResponseMetadata } from '../ai/llmMetadata';
 import { RouterService } from '../ai/routerService';
 import { RoutingDecision } from '../ai/modelTiers';
+import { ChatLogger } from '../ai/chatLogger';
 
 interface MessageContext {
   userContent: string;
@@ -32,6 +33,7 @@ export class MessageHandler {
   private executor: ActionExecutor;
   private router: RouterService;
   private messageContexts: Map<string, MessageContext>;
+  private chatLogger: ChatLogger;
 
   constructor(
     client: Client,
@@ -50,6 +52,7 @@ export class MessageHandler {
     this.executor = new ActionExecutor(aiService);
     this.router = new RouterService(aiService);
     this.messageContexts = new Map();
+    this.chatLogger = new ChatLogger();
   }
 
   shouldRespond(message: DiscordMessage): boolean {
@@ -121,6 +124,9 @@ export class MessageHandler {
         role: 'user',
         content: `${message.author.username}: ${message.content}`,
       };
+
+      // Log the raw user message (plain text)
+      this.chatLogger.logUserMessage(message.author.username, message.content, guildId, channelId, userId);
 
       // Add to memory (for in-session use)
       await this.memoryManager.addMessage(channelId, userMessage);
@@ -340,6 +346,8 @@ export class MessageHandler {
           // Persist user + assistant messages using ContextService
           await this.contextService.appendUserAndAssistant(userId, userMessage, cleanResponse, channelId, guildId);
           console.log(`✓ Persisted context: user + response for user ${userId}`);
+          // Log final bot reply (plain text)
+          this.chatLogger.logBotReply(finalResponse, guildId, channelId, userId);
         } catch (error) {
           console.error('Failed to persist context to file:', error);
         }
