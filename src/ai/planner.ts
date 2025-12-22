@@ -4,7 +4,6 @@
  */
 
 import { OpenRouterService, Message } from './openRouterService';
-import { config } from '../config';
 import { LLMResponseMetadata } from './llmMetadata';
 
 export interface PlannedAction {
@@ -48,16 +47,18 @@ export class Planner {
     conversationContext: Message[],
     personaId?: string
   ): Promise<ActionPlan> {
-    try {
-      const availableTools = this.aiService.getAvailableMCPTools();
-      const toolList = availableTools
-        .map((t) => `- ${t.name}: ${t.description}`)
-        .join('\n');
+    const availableTools = this.aiService.getAvailableMCPTools();
+    const toolList = availableTools
+      .map((t) => `- ${t.name}: ${t.description}`)
+      .join('\n');
 
-      const planningPrompt: Message[] = [
-        {
-          role: 'system',
-          content: `OUTPUT JSON ONLY. No prose, no markdown, no explanation.
+    const planningPrompt: Message[] = [
+      {
+        role: 'system',
+        content: `You are a deterministic planner. Respond with **ONLY** valid JSON that matches the schema. No markdown, no prose, no code fences, no explanations.
+
+ALLOWED ACTION TYPES: "tool", "image", "chat" (nothing else)
+IF UNSURE: return {"actions":[{"type":"chat"}],"reasoning":"Planner fallback"}
 
 Available tools:
 ${toolList}
@@ -73,112 +74,105 @@ Detection rules:
 - Image request → "image" type
 - General chat → "chat" type
 
-SCHEMA (REQUIRED):
+SCHEMA (STRICT):
 {
   "actions": [
     {"type": "tool", "toolName": "name", "toolParams": {}},
     {"type": "image", "imagePrompt": "exact user words", "imageResolution": {"width": 512, "height": 512}},
     {"type": "chat"}
-  ]
-}
+  ],
+  "reasoning": "short note"
+}`,
+      },
+      ...conversationContext.slice(-2), // Minimal context
+      {
+        role: 'user',
+        content: userMessage,
+      },
+    ];
 
-RULES:
-1. Output ONLY valid JSON
-2. Any output that is not valid JSON is INVALID
-3. Prefer tools over chat for deterministic tasks
-4. Use exact user words for imagePrompt
-5. For GitHub summaries use action="readme"
+    const response = await this.aiService.planCompletionWithMetadata(planningPrompt);
 
-Example outputs:
-{"actions":[{"type":"tool","toolName":"calculate","toolParams":{"expression":"5+5"}}]}
-{"actions":[{"type":"tool","toolName":"searxng_search","toolParams":{"query":"minecraft mods"}}]}
-{"actions":[{"type":"chat"}]}`,
-        },
-        ...conversationContext.slice(-2), // Minimal context
-        {
-          role: 'user',
-          content: userMessage,
-        },
-      ];
+    const plan = this.parsePlannerResponse(response.content, response.metadata);
 
-      const response = await this.aiService.planCompletionWithMetadata(planningPrompt);
+    console.log(
+      `✓ Planned ${plan.actions.length} action(s):`,
+      plan.actions.map((a) => a.type + (a.toolName ? `:${a.toolName}` : '')).join(' → ')
+    );
 
-      // Strict JSON parsing
-      let plan: ActionPlan;
-      try {
-        // Try to extract JSON from response
-        const jsonMatch = response.content.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-          throw new Error('No JSON found in response');
-        }
-        
-        const parsed = JSON.parse(jsonMatch[0]);
-        
-        // Validate structure
-        if (!parsed.actions || !Array.isArray(parsed.actions)) {
-          throw new Error('Invalid plan structure: missing actions array');
-        }
-
-        plan = {
-          actions: parsed.actions,
-          reasoning: parsed.reasoning || 'Planned actions',
-          metadata: response.metadata,
-          isFallback: false,
-        };
-
-      } catch (parseError) {
-        console.warn('Planner JSON parse failed:', parseError);
-        console.warn('Raw response:', response);
-        throw parseError; // Propagate to trigger retry
-      }
-
-      // Validate plan
-      if (plan.actions.length === 0) {
-        console.warn('Empty action plan, defaulting to chat');
-        return {
-          actions: [{ type: 'chat' }],
-          reasoning: 'Empty plan fallback',
-          isFallback: false,
-        };
-      }
-
-      console.log(`✓ Planned ${plan.actions.length} action(s):`, plan.actions.map(a => a.type + (a.toolName ? `:${a.toolName}` : '')).join(' → '));
-
-      return plan;
-    } catch (error) {
-      console.error('Planner error:', error);
-      throw error; // Throw to trigger retry
-    }
+    return plan;
   }
 
   /**
-   * Retry wrapper with strict validation
+   * Single-attempt wrapper with strict validation and safe fallback
    */
   async planActionsWithRetry(
     userMessage: string,
     conversationContext: Message[],
     personaId?: string
   ): Promise<ActionPlan> {
-    // First attempt
     try {
       return await this.planActions(userMessage, conversationContext, personaId);
     } catch (error) {
-      console.warn('⚠ Planner attempt 1 failed, retrying...', error instanceof Error ? error.message : error);
-    }
-
-    // Second attempt (retry)
-    try {
-      return await this.planActions(userMessage, conversationContext, personaId);
-    } catch (retryError) {
-      console.error('✗ Planner attempt 2 failed, using safe fallback');
-      console.error('Error:', retryError instanceof Error ? retryError.message : retryError);
-      
-      // Safe fallback - do NOT hallucinate
+      console.error('Planner failed, using direct chat fallback:', error);
       return {
         actions: [{ type: 'chat' }],
-        reasoning: 'Planning failed after retry - using chat fallback',
+        reasoning: 'Planner output was invalid JSON - using direct chat',
+        metadata: undefined,
         isFallback: true,
       };
     }
+  }
+
+  /**
+   * Parse and validate planner output as strict JSON
+   */
+  private parsePlannerResponse(content: string, metadata?: LLMResponseMetadata): ActionPlan {
+    const sanitized = this.extractJsonPayload(content);
+
+    const parsed = JSON.parse(sanitized);
+    if (!parsed.actions || !Array.isArray(parsed.actions)) {
+      throw new Error('Invalid plan structure: missing actions array');
+    }
+
+    const allowedTypes = new Set<ActionPlan['actions'][number]['type']>(['tool', 'image', 'chat']);
+    const filteredActions = parsed.actions.filter((action: PlannedAction) => allowedTypes.has(action.type));
+
+    if (filteredActions.length === 0) {
+      return {
+        actions: [{ type: 'chat' }],
+        reasoning: 'Planner returned no valid actions - using chat',
+        metadata,
+        isFallback: true,
+      };
+    }
+
+    return {
+      actions: filteredActions,
+      reasoning: parsed.reasoning || 'Planned actions',
+      metadata,
+      isFallback: false,
+    };
+  }
+
+  /**
+   * Accept only pure JSON payloads (optional fenced JSON is allowed)
+   */
+  private extractJsonPayload(raw: string): string {
+    if (!raw) {
+      throw new Error('Empty planner response');
+    }
+
+    const trimmed = raw.trim();
+
+    // Allow minimal fenced JSON, otherwise require bare JSON
+    const fencedMatch = trimmed.match(/```json\s*([\s\S]*?)```/i);
+    const candidate = fencedMatch ? fencedMatch[1].trim() : trimmed;
+
+    if (!candidate.startsWith('{') || !candidate.endsWith('}')) {
+      throw new Error('Planner response was not pure JSON');
+    }
+
+    return candidate;
   }
 }

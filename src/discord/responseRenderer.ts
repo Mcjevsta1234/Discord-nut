@@ -404,8 +404,10 @@ export class ResponseRenderer {
       // PROCESSING ORDER: normalize → extract → prepare attachments → clean text → split → validate
       const normalizedContent = this.normalizeModelOutput(rendered.responseContent);
       const extractionResult = this.extractCodeAndHtml(normalizedContent);
+      const consolidated = this.consolidateAttachments(extractionResult.attachments);
+      const renamedContent = this.applyAttachmentRename(extractionResult.content, consolidated.renameMap);
 
-      const fileContents: FileContent[] = extractionResult.attachments.map(file => ({
+      const fileContents: FileContent[] = consolidated.attachments.map(file => ({
         filename: file.filename,
         content: file.content,
       }));
@@ -413,7 +415,7 @@ export class ResponseRenderer {
       const { attachments: discordAttachments, warnings: attachmentWarnings, errors: attachmentErrors } =
         FileAttachmentHandler.createMultipleAttachments(fileContents);
 
-      let messageChunks = this.splitLongText(extractionResult.content, 1900);
+      let messageChunks = this.splitLongText(renamedContent, 1900);
 
       if (attachmentWarnings.length || attachmentErrors.length) {
         if (messageChunks.length === 0) {
@@ -483,7 +485,7 @@ export class ResponseRenderer {
       // STEP 3: Send file attachments LAST (after embeds and text)
       if (discordAttachments.length > 0 && 'send' in message.channel) {
         const summaryLines: string[] = [];
-        const summary = this.buildAttachmentSummary(extractionResult.attachments);
+        const summary = this.buildAttachmentSummary(consolidated.attachments);
         if (summary) {
           summaryLines.push(summary);
         }
@@ -556,13 +558,14 @@ export class ResponseRenderer {
   }
 
   /**
-   * Extract code blocks or HTML from response for file attachment
-   * STRICT RULES:
-   * - Tiny snippets (≤15 lines AND ≤300 chars) may stay inline if illustrative only
-   * - Complete programs/files MUST be attached
-   * - Full HTML/JS/CSS always attached
-   * - Correct file extensions enforced
-   * Returns: { content: cleaned text, attachments: file data }
+  * Extract code blocks or HTML from response for file attachment
+  * STRICT RULES:
+  * - Tiny snippets (≤10 lines AND ≤200 chars) may stay inline if illustrative only
+  * - Complete programs/files MUST be attached
+  * - Full HTML/JS/CSS always attached
+  * - Correct file extensions enforced
+  * - Default to a single attachment unless multiple languages force separation
+  * Returns: { content: cleaned text, attachments: file data }
    */
   static extractCodeAndHtml(responseContent: string): {
     content: string;
@@ -582,8 +585,8 @@ export class ResponseRenderer {
       const lineCount = code.split('\n').length;
       const charCount = code.length;
       
-      // HARD RULE: Attach if > 15 lines OR > 300 chars OR is a complete program
-      const exceedsTinySnippetLimit = lineCount > 15 || charCount > 300;
+      // HARD RULE: Attach if > 10 lines OR > 200 chars OR is a complete program
+      const exceedsTinySnippetLimit = lineCount > 10 || charCount > 200;
       const isCompleteProgram = this.looksLikeCompleteCode(code, language);
       
       if (exceedsTinySnippetLimit || isCompleteProgram) {
@@ -635,6 +638,111 @@ export class ResponseRenderer {
       content: cleanedContent.trim(),
       attachments,
     };
+  }
+
+  /**
+   * Collapse multiple attachments into a single file when safe
+   * Returns consolidated attachments plus a rename map to keep text references accurate
+   */
+  private static consolidateAttachments(
+    attachments: Array<{ content: string; filename: string; language: string }>
+  ): {
+    attachments: Array<{ content: string; filename: string; language: string }>;
+    renameMap: Record<string, string>;
+  } {
+    if (attachments.length <= 1) {
+      return { attachments, renameMap: {} };
+    }
+
+    const extensions = attachments.map((file) => file.filename.split('.').pop()?.toLowerCase() || '');
+    const singleExtension = extensions.every((ext) => ext === extensions[0] && ext !== '');
+
+    if (!singleExtension) {
+      return { attachments, renameMap: {} };
+    }
+
+    const commentDelimiters = this.getSectionDelimiter(extensions[0]);
+    const primaryFilename = attachments[0].filename;
+
+    const combinedContent = attachments
+      .map((file) => {
+        const header = commentDelimiters.end
+          ? `${commentDelimiters.start} File: ${file.filename} ${commentDelimiters.end}`
+          : `${commentDelimiters.start} File: ${file.filename}`;
+        return `${header}\n${file.content}`;
+      })
+      .join('\n\n');
+
+    const renameMap = attachments.reduce<Record<string, string>>((map, file) => {
+      map[file.filename] = primaryFilename;
+      return map;
+    }, {});
+
+    return {
+      attachments: [
+        {
+          content: combinedContent,
+          filename: primaryFilename,
+          language: attachments[0].language,
+        },
+      ],
+      renameMap,
+    };
+  }
+
+  /**
+   * Keep text markers aligned with renamed/merged files
+   */
+  private static applyAttachmentRename(content: string, renameMap: Record<string, string>): string {
+    if (!renameMap || Object.keys(renameMap).length === 0) {
+      return content;
+    }
+
+    let updated = content;
+    for (const [from, to] of Object.entries(renameMap)) {
+      if (from === to) continue;
+      const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = new RegExp(`\`${escaped}\``, 'g');
+      updated = updated.replace(pattern, `\`${to}\``);
+    }
+
+    return updated;
+  }
+
+  /**
+   * Provide language-appropriate section delimiters when merging files
+   */
+  private static getSectionDelimiter(extension: string): { start: string; end?: string } {
+    const normalized = extension.toLowerCase();
+
+    switch (normalized) {
+      case 'py':
+        return { start: '# ---' };
+      case 'js':
+      case 'ts':
+      case 'jsx':
+      case 'tsx':
+      case 'java':
+      case 'cpp':
+      case 'c':
+      case 'rs':
+      case 'go':
+      case 'rb':
+      case 'kt':
+      case 'cs':
+        return { start: '// ---' };
+      case 'css':
+      case 'scss':
+      case 'sass':
+        return { start: '/*', end: '*/' };
+      case 'html':
+        return { start: '<!--', end: '-->' };
+      case 'yaml':
+      case 'yml':
+        return { start: '# ---' };
+      default:
+        return { start: '// ---' };
+    }
   }
 
   /**

@@ -162,6 +162,7 @@ export class OpenRouterService {
           temperature: 0,
           top_p: 1,
           max_tokens: 256,
+          response_format: { type: 'json_object' },
         }
       );
 
