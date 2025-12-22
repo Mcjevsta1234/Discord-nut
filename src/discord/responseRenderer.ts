@@ -41,14 +41,24 @@ export class ProgressTracker {
   private updates: ProgressUpdate[] = [];
   private updateInterval?: NodeJS.Timeout;
   private spinnerIndex = 0;
-  // Cute pacman eating dots animation 🎮
+  // Fun snake game animation 🐍
   private spinnerFrames = [
-    '🟡 • • •',
-    '• 🟡 • •',
-    '• • 🟡 •',
-    '• • • 🟡',
-    '• • 🟡 •',
-    '• 🟡 • •'
+    '🐍💨       🍎',
+    ' 🐍💨      🍎',
+    '  🐍💨     🍎',
+    '   🐍💨    🍎',
+    '    🐍💨   🍎',
+    '     🐍💨  🍎',
+    '      🐍💨 🍎',
+    '       🐍💨🍎',
+    '       🐍🍎💨',
+    '      🐍🍎 💨',
+    '     🐍🍎  💨',
+    '    🐍🍎   💨',
+    '   🐍🍎    💨',
+    '  🐍🍎     💨',
+    ' 🐍🍎      💨',
+    '🐍🍎       💨'
   ];
   private lastUpdateTime = 0;
   private minUpdateInterval = 1500; // Discord rate limit: max 5 edits per 5 seconds = 1 per second minimum
@@ -798,8 +808,8 @@ export class ResponseRenderer {
   static createProgressTracker(message: DiscordMessage, userQuery: string): ProgressTracker {
     const embed = new EmbedBuilder()
       .setColor(0xffa500)
-      .setTitle('🎮 Processing Your Request')
-      .setDescription(`**Query:** ${this.truncate(userQuery, 200)}\n\n🟡 • • • Starting...`)
+      .setTitle('🐍 Processing Your Request')
+      .setDescription(`**Query:** ${this.truncate(userQuery, 200)}\n\n🐍💨       🍎 Starting...`)
       .setTimestamp();
     
     return new ProgressTracker(message, embed);
@@ -929,40 +939,54 @@ export class ResponseRenderer {
       return { attachments, renameMap: {} };
     }
 
-    const extensions = attachments.map((file) => file.filename.split('.').pop()?.toLowerCase() || '');
-    const singleExtension = extensions.every((ext) => ext === extensions[0] && ext !== '');
-
-    if (!singleExtension) {
-      return { attachments, renameMap: {} };
+    // Group by extension
+    const grouped = new Map<string, typeof attachments>();
+    for (const file of attachments) {
+      const ext = file.filename.split('.').pop()?.toLowerCase() || 'txt';
+      if (!grouped.has(ext)) {
+        grouped.set(ext, []);
+      }
+      grouped.get(ext)!.push(file);
     }
 
-    const commentDelimiters = this.getSectionDelimiter(extensions[0]);
-    const primaryFilename = attachments[0].filename;
+    // Consolidate each group separately
+    const consolidated: typeof attachments = [];
+    const renameMap: Record<string, string> = {};
 
-    const combinedContent = attachments
-      .map((file) => {
-        const header = commentDelimiters.end
-          ? `${commentDelimiters.start} File: ${file.filename} ${commentDelimiters.end}`
-          : `${commentDelimiters.start} File: ${file.filename}`;
-        return `${header}\n${file.content}`;
-      })
-      .join('\n\n');
+    for (const [ext, files] of grouped.entries()) {
+      if (files.length === 1) {
+        consolidated.push(files[0]);
+        continue;
+      }
 
-    const renameMap = attachments.reduce<Record<string, string>>((map, file) => {
-      map[file.filename] = primaryFilename;
-      return map;
-    }, {});
+      // Always consolidate multiple files of the same type into one
+      const commentDelimiters = this.getSectionDelimiter(ext);
+      const primaryFilename = ext === 'html' ? 'index.html' : files[0].filename;
 
-    return {
-      attachments: [
-        {
-          content: combinedContent,
-          filename: primaryFilename,
-          language: attachments[0].language,
-        },
-      ],
-      renameMap,
-    };
+      const combinedContent = files
+        .map((file) => {
+          const header = commentDelimiters.end
+            ? `${commentDelimiters.start} File: ${file.filename} ${commentDelimiters.end}`
+            : `${commentDelimiters.start} File: ${file.filename}`;
+          return `${header}\n${file.content}`;
+        })
+        .join('\n\n');
+
+      // Map all old filenames to the primary one
+      for (const file of files) {
+        renameMap[file.filename] = primaryFilename;
+      }
+
+      consolidated.push({
+        content: combinedContent,
+        filename: primaryFilename,
+        language: files[0].language,
+      });
+    }
+
+    return { attachments: consolidated, renameMap };
+
+
   }
 
   /**
