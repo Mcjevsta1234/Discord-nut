@@ -1,4 +1,26 @@
-# File-Based Context Manager
+Context:
+Some destructive actions must be restricted per server.
+
+Task:
+Implement a per-guild admin rank system.
+
+Requirements:
+- Admin rank is configurable per guild
+- Admin can be defined by:
+  - Discord role ID
+    - OR Discord permission (e.g. MANAGE_GUILD)
+    - Store configuration locally
+    
+    Behavior:
+    - Admin checks enforced before privileged commands
+    - Non-admins receive a clear permission error
+    
+    Constraints:
+    - TypeScript only
+    - No hardcoded role IDs
+    
+    Expected result:
+    - Servers control who can perform admin actions# File-Based Context Manager
 
 ## Overview
 Conversation context is now stored locally in JSON files with **zero leakage** between users and channels.

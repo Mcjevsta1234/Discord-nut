@@ -8,6 +8,7 @@ import {
 } from 'discord.js';
 import { config } from '../config';
 import { PromptManager } from './promptManager';
+import { AdminConfigManager } from './adminConfig';
 import { FileContextManager } from '../ai/fileContextManager';
 import { getAllPersonaIds, getPersona } from '../personas.config';
 import { setDebugMode, parseDebugMode, getDebugMode, getDebugModeDescription } from './debugMode';
@@ -18,11 +19,13 @@ export class AdminCommandHandler {
   private client: Client;
   private promptManager: PromptManager;
   private fileContextManager: FileContextManager;
+  private adminConfig: AdminConfigManager;
 
   constructor(client: Client, promptManager: PromptManager) {
     this.client = client;
     this.promptManager = promptManager;
     this.fileContextManager = new FileContextManager();
+    this.adminConfig = new AdminConfigManager();
   }
 
   async registerCommands(): Promise<void> {
@@ -52,6 +55,39 @@ export class AdminCommandHandler {
           return opt;
         })
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+        .toJSON(),
+      // Admin config: set role
+      new SlashCommandBuilder()
+        .setName('admin-set-role')
+        .setDescription('Set the server admin role (members with this role can run admin commands)')
+        .addRoleOption((option) =>
+          option
+            .setName('role')
+            .setDescription('Select the role to grant admin privileges')
+            .setRequired(true)
+        )
+        .toJSON(),
+      // Admin config: set permission requirement
+      new SlashCommandBuilder()
+        .setName('admin-set-permission')
+        .setDescription('Set the server admin permission requirement (e.g., MANAGE_GUILD)')
+        .addStringOption((option) =>
+          option
+            .setName('permission')
+            .setDescription('Discord permission name (e.g., MANAGE_GUILD, ADMINISTRATOR)')
+            .setRequired(true)
+            .addChoices(
+              { name: 'MANAGE_GUILD', value: 'ManageGuild' },
+              { name: 'ADMINISTRATOR', value: 'Administrator' },
+              { name: 'MANAGE_CHANNELS', value: 'ManageChannels' },
+              { name: 'MANAGE_ROLES', value: 'ManageRoles' }
+            )
+        )
+        .toJSON(),
+      // Admin config: clear
+      new SlashCommandBuilder()
+        .setName('admin-clear-config')
+        .setDescription('Clear custom admin config for this server (reverts to MANAGE_GUILD)')
         .toJSON(),
       // User-accessible clear command (safe for repeated use)
       new SlashCommandBuilder()
@@ -103,11 +139,11 @@ export class AdminCommandHandler {
 
   async handleInteraction(interaction: Interaction): Promise<void> {
     if (!interaction.isChatInputCommand()) return;
-    // Allow clear commands for all users; other admin commands require ManageGuild
+    // Allow clear commands for all users; other admin commands require admin rights
     const isClearContext = interaction.commandName === 'clear-context' || interaction.commandName === 'clear';
     if (!isClearContext && !this.hasPermission(interaction)) {
       await interaction.reply({
-        content: 'You need the Manage Server permission to run this command.',
+        content: 'You do not have permission to run this command.',
         ephemeral: true,
       });
       return;
@@ -146,13 +182,26 @@ export class AdminCommandHandler {
       await this.handleClearContext(interaction);
       return;
     }
+
+    if (interaction.commandName === 'admin-set-role') {
+      await this.handleAdminSetRole(interaction);
+      return;
+    }
+    if (interaction.commandName === 'admin-set-permission') {
+      await this.handleAdminSetPermission(interaction);
+      return;
+    }
+    if (interaction.commandName === 'admin-clear-config') {
+      await this.handleAdminClearConfig(interaction);
+      return;
+    }
   }
 
   private hasPermission(interaction: ChatInputCommandInteraction): boolean {
-    if (interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild)) {
-      return true;
-    }
-    return false;
+    if (!interaction.guildId) return false;
+    const member = interaction.member;
+    // member can be GuildMember or APIGuildMember; in interactions it is GuildMember-like
+    return this.adminConfig.isAdmin(interaction.guildId, member as any);
   }
 
   private async handleSetPersona(
@@ -257,5 +306,49 @@ export class AdminCommandHandler {
         ephemeral: true,
       });
     }
+  }
+
+  private async handleAdminSetRole(
+    interaction: ChatInputCommandInteraction
+  ): Promise<void> {
+    if (!interaction.guildId) {
+      await interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      return;
+    }
+    const role = interaction.options.getRole('role', true);
+    this.adminConfig.setRole(interaction.guildId, role.id);
+    await interaction.reply({
+      content: `✅ Admin role set to @${role.name}. Members with this role can run admin commands.`,
+      ephemeral: true,
+    });
+  }
+
+  private async handleAdminSetPermission(
+    interaction: ChatInputCommandInteraction
+  ): Promise<void> {
+    if (!interaction.guildId) {
+      await interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      return;
+    }
+    const permission = interaction.options.getString('permission', true) as any;
+    this.adminConfig.setPermission(interaction.guildId, permission);
+    await interaction.reply({
+      content: `✅ Admin permission set to ${permission}. Members with this permission can run admin commands.`,
+      ephemeral: true,
+    });
+  }
+
+  private async handleAdminClearConfig(
+    interaction: ChatInputCommandInteraction
+  ): Promise<void> {
+    if (!interaction.guildId) {
+      await interaction.reply({ content: 'This command can only be used in a server.', ephemeral: true });
+      return;
+    }
+    this.adminConfig.clear(interaction.guildId);
+    await interaction.reply({
+      content: '✅ Admin config cleared. Default requirement is now MANAGE_GUILD.',
+      ephemeral: true,
+    });
   }
 }
