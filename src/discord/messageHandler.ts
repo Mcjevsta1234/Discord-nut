@@ -125,8 +125,14 @@ export class MessageHandler {
         content: `${message.author.username}: ${message.content}`,
       };
 
-      // Log the raw user message (plain text)
-      this.chatLogger.logUserMessage(message.author.username, message.content, guildId, channelId, userId);
+      // Log the raw user message (plain text) - fire-and-forget, non-blocking
+      setImmediate(() => {
+        try {
+          this.chatLogger.logUserMessage(message.author.username, message.content, guildId, channelId, userId);
+        } catch (err) {
+          // Logging failures must never affect bot behavior
+        }
+      });
 
       // Add to memory (for in-session use)
       await this.memoryManager.addMessage(channelId, userMessage);
@@ -236,18 +242,20 @@ export class MessageHandler {
           undefined
         );
         
-        // Log image generation to disk
+        // Log image generation to disk - fire-and-forget, non-blocking
         if (message.guild && message.author.username) {
           const guildId = message.guild.id;
           const channelId = message.channel.id;
           const userId = message.author.id;
-          this.chatLogger.logImageGeneration(
-            executionResult.imageData.buffer,
-            message.author.username,
-            guildId,
-            channelId,
-            userId
-          );
+          const buffer = executionResult.imageData.buffer;
+          const username = message.author.username;
+          setImmediate(() => {
+            try {
+              this.chatLogger.logImageGeneration(buffer, username, guildId, channelId, userId);
+            } catch (err) {
+              // Logging failures must never affect bot behavior
+            }
+          });
         }
         
         await this.sendImageResponseWithRenderer(
@@ -360,8 +368,14 @@ export class MessageHandler {
           // Persist user + assistant messages using ContextService
           await this.contextService.appendUserAndAssistant(userId, userMessage, cleanResponse, channelId, guildId);
           console.log(`✓ Persisted context: user + response for user ${userId}`);
-          // Log final bot reply (plain text)
-          this.chatLogger.logBotReply(finalResponse, guildId, channelId, userId);
+          // Log final bot reply (plain text) - fire-and-forget, non-blocking
+          setImmediate(() => {
+            try {
+              this.chatLogger.logBotReply(finalResponse, guildId, channelId, userId);
+            } catch (err) {
+              // Logging failures must never affect bot behavior
+            }
+          });
         } catch (error) {
           console.error('Failed to persist context to file:', error);
         }
@@ -1261,18 +1275,19 @@ export class MessageHandler {
         if (executionResult.hasImage && executionResult.imageData) {
           const { buffer, resolution, prompt } = executionResult.imageData;
           
-          // Log image generation to disk
+          // Log image generation to disk - fire-and-forget, non-blocking
           if (interaction.guild && interaction.user.username) {
             const guildId = interaction.guild.id;
             const channelId = interaction.channelId;
             const userId = interaction.user.id;
-            this.chatLogger.logImageGeneration(
-              buffer,
-              interaction.user.username,
-              guildId,
-              channelId,
-              userId
-            );
+            const username = interaction.user.username;
+            setImmediate(() => {
+              try {
+                this.chatLogger.logImageGeneration(buffer, username, guildId, channelId, userId);
+              } catch (err) {
+                // Logging failures must never affect bot behavior
+              }
+            });
           }
           
           if (!this.imageService.isDiscordSafe(buffer.length)) {

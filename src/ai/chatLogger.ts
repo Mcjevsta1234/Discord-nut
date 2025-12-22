@@ -4,6 +4,16 @@ import path from 'path';
 type GuildId = string | null | undefined;
 type ChannelId = string | null | undefined;
 
+/**
+ * ChatLogger: Fire-and-forget conversation and image logging
+ * 
+ * Design principles:
+ * - All logging operations are synchronous but wrapped in try-catch
+ * - Logging failures NEVER affect bot behavior or message handling
+ * - Callers should wrap calls in setImmediate() for non-blocking execution
+ * - No async operations to avoid race conditions with message flow
+ * - All file writes use synchronous fs methods for reliability
+ */
 export class ChatLogger {
   private baseDir: string;
 
