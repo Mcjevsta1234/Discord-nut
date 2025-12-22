@@ -631,13 +631,31 @@ export class ResponseRenderer {
         sections.push(`• Total Time: ${(totalDuration / 1000).toFixed(2)}s`);
       }
       
-      // LLM latency
-      if (metadata.llmMetadata && metadata.llmMetadata.totalLatencyMs > 0) {
-        sections.push(`• LLM Latency: ${(metadata.llmMetadata.totalLatencyMs / 1000).toFixed(2)}s`);
+      // Separate LLM and tool latencies
+      if (metadata.llmMetadata) {
+        const llm = metadata.llmMetadata;
+        
+        // LLM latency (actual API calls)
+        if (llm.totalLLMLatencyMs > 0) {
+          sections.push(`  - LLM Latency: ${(llm.totalLLMLatencyMs / 1000).toFixed(2)}s`);
+        }
+        
+        // Tool execution time (separate from LLM)
+        if (llm.totalToolLatencyMs > 0) {
+          sections.push(`  - Tool Execution: ${(llm.totalToolLatencyMs / 1000).toFixed(2)}s (${llm.toolExecutions.length} tool${llm.toolExecutions.length !== 1 ? 's' : ''})`);
+          
+          // Show individual tool timings if multiple tools
+          if (llm.toolExecutions.length > 1) {
+            llm.toolExecutions.forEach(tool => {
+              const status = tool.success ? '✓' : '✗';
+              sections.push(`    ${status} ${tool.toolName}: ${tool.latencyMs}ms`);
+            });
+          }
+        }
       }
       
-      // Execution time (tool calls)
-      if (metadata.executionDuration !== undefined && metadata.executionDuration > 0) {
+      // Legacy execution time field (backward compatibility)
+      if (!metadata.llmMetadata?.totalToolLatencyMs && metadata.executionDuration !== undefined && metadata.executionDuration > 0) {
         sections.push(`• Tool Execution: ${(metadata.executionDuration / 1000).toFixed(2)}s`);
       }
     }

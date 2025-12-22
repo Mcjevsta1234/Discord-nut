@@ -441,11 +441,12 @@ export class MessageHandler {
           });
         }
 
-        // Aggregate all LLM metadata
+        // Aggregate all LLM metadata, including tool execution times
         updatedMetadata.llmMetadata = aggregateLLMMetadata(
           planningCallMetadata,
           [],
-          responseCallMetadata
+          responseCallMetadata,
+          executionResult.toolExecutions
         );
 
         // Render and send complete response

@@ -18,6 +18,17 @@ export interface TokenUsage {
 }
 
 /**
+ * Tool execution timing metadata
+ */
+export interface ToolExecutionMetadata {
+  toolName: string;
+  startTimeMs: number;
+  endTimeMs: number;
+  latencyMs: number;
+  success: boolean;
+}
+
+/**
  * Complete metadata about an LLM API call
  */
 export interface LLMResponseMetadata {
@@ -55,6 +66,9 @@ export interface AggregatedLLMMetadata {
   // Execution phase (tool calls might use LLM)
   executionCalls: LLMResponseMetadata[];
   
+  // Tool execution timing (separate from LLM latency)
+  toolExecutions: ToolExecutionMetadata[];
+  
   // Final response generation
   responseCall?: LLMResponseMetadata;
   
@@ -62,7 +76,9 @@ export interface AggregatedLLMMetadata {
   totalTokens: number;
   totalPromptTokens: number;
   totalCompletionTokens: number;
-  totalLatencyMs: number;
+  totalLLMLatencyMs: number;
+  totalToolLatencyMs: number;
+  totalLatencyMs: number; // LLM + tools
   totalCost: number;
   
   // Summary
@@ -112,11 +128,13 @@ export function calculateCost(usage: TokenUsage, model: string): number {
 
 /**
  * Aggregate multiple LLM metadata objects into a summary
+ * Separately tracks LLM latency and tool execution time
  */
 export function aggregateLLMMetadata(
   planningCall?: LLMResponseMetadata,
   executionCalls?: LLMResponseMetadata[],
-  responseCall?: LLMResponseMetadata
+  responseCall?: LLMResponseMetadata,
+  toolExecutions?: ToolExecutionMetadata[]
 ): AggregatedLLMMetadata {
   const allCalls: LLMResponseMetadata[] = [
     planningCall,
@@ -139,10 +157,20 @@ export function aggregateLLMMetadata(
     0
   );
   
-  const totalLatencyMs = allCalls.reduce(
+  // Track LLM latency separately from tool execution
+  const totalLLMLatencyMs = allCalls.reduce(
     (sum, call) => sum + (call.latencyMs || 0),
     0
   );
+  
+  // Track tool execution time separately
+  const toolExecs = toolExecutions || [];
+  const totalToolLatencyMs = toolExecs.reduce(
+    (sum, tool) => sum + tool.latencyMs,
+    0
+  );
+  
+  const totalLatencyMs = totalLLMLatencyMs + totalToolLatencyMs;
   
   const totalCost = allCalls.reduce(
     (sum, call) => sum + (call.estimatedCost || 0),
@@ -154,10 +182,13 @@ export function aggregateLLMMetadata(
   return {
     planningCall,
     executionCalls: executionCalls || [],
+    toolExecutions: toolExecs,
     responseCall,
     totalTokens,
     totalPromptTokens,
     totalCompletionTokens,
+    totalLLMLatencyMs,
+    totalToolLatencyMs,
     totalLatencyMs,
     totalCost,
     totalCalls: allCalls.length,

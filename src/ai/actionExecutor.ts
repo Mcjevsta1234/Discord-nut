@@ -5,6 +5,7 @@
 
 import { PlannedAction } from './planner';
 import { OpenRouterService, Message } from './openRouterService';
+import { ToolExecutionMetadata } from './llmMetadata';
 import { ImageService } from './imageService';
 import { AttachmentBuilder, Message as DiscordMessage } from 'discord.js';
 
@@ -26,6 +27,7 @@ export interface ExecutionResult {
     resolution: { width: number; height: number };
     prompt: string;
   };
+  toolExecutions: ToolExecutionMetadata[]; // Track tool timing separately
 }
 
 /**
@@ -53,6 +55,7 @@ export class ActionExecutor {
     progressCallback?: ActionProgressCallback
   ): Promise<ExecutionResult> {
     const results: ActionResult[] = [];
+    const toolExecutions: ToolExecutionMetadata[] = [];
     let hasImage = false;
     let imageData: ExecutionResult['imageData'];
 
@@ -70,7 +73,22 @@ export class ActionExecutor {
         });
       }
 
+      // Track tool execution timing
+      const toolStartTime = action.type === 'tool' ? Date.now() : undefined;
       const result = await this.executeAction(action);
+      
+      // Record tool execution metadata if this was a tool action
+      if (action.type === 'tool' && toolStartTime && action.toolName) {
+        const toolEndTime = Date.now();
+        toolExecutions.push({
+          toolName: action.toolName,
+          startTimeMs: toolStartTime,
+          endTimeMs: toolEndTime,
+          latencyMs: toolEndTime - toolStartTime,
+          success: result.success,
+        });
+      }
+      
       results.push(result);
 
       // Report completion
@@ -94,7 +112,7 @@ export class ActionExecutor {
       }
     }
 
-    return { results, hasImage, imageData };
+    return { results, hasImage, imageData, toolExecutions };
   }
 
   async executeAction(action: PlannedAction): Promise<ActionResult> {
