@@ -38,6 +38,19 @@ export enum ModelTier {
 
 /**
  * Complete model configuration for a tier
+ * 
+ * HOW TO CUSTOMIZE PRICING:
+ * 
+ * Option 1 - Environment Variables (.env file):
+ *   MODEL_SMART_INPUT_PRICE=0.14
+ *   MODEL_SMART_OUTPUT_PRICE=0.28
+ * 
+ * Option 2 - Direct Edit (below in tiers config):
+ *   inputPricePerMillionTokens: 0.14,
+ *   outputPricePerMillionTokens: 0.28,
+ * 
+ * Prices are in USD per 1 million tokens
+ * Find pricing at: https://openrouter.ai/models
  */
 export interface TierConfig {
   tier: ModelTier;
@@ -93,6 +106,11 @@ function getEnvNumber(key: string, defaultValue: number): number {
 function getEnvBoolean(key: string, defaultValue: boolean): boolean {
   const value = process.env[key];
   return value ? value === 'true' : defaultValue;
+}
+
+function getEnvFloat(key: string, defaultValue: number): number {
+  const value = process.env[key];
+  return value ? parseFloat(value) : defaultValue;
 }
 
 /**
@@ -154,8 +172,8 @@ export const routingConfig: RoutingConfig = {
       provider: 'xiaomi',
       supportsTools: false, // INSTANT tier for greetings/short chat only
       supportsCaching: false,
-      inputPricePerMillionTokens: 0,
-      outputPricePerMillionTokens: 0,
+      inputPricePerMillionTokens: getEnvFloat('MODEL_INSTANT_INPUT_PRICE', 0),
+      outputPricePerMillionTokens: getEnvFloat('MODEL_INSTANT_OUTPUT_PRICE', 0),
     },
     
     [ModelTier.SMART]: {
@@ -167,8 +185,8 @@ export const routingConfig: RoutingConfig = {
       provider: 'deepseek',
       supportsTools: true,
       supportsCaching: false,
-      inputPricePerMillionTokens: 0,
-      outputPricePerMillionTokens: 0,
+      inputPricePerMillionTokens: getEnvFloat('MODEL_SMART_INPUT_PRICE', 0),
+      outputPricePerMillionTokens: getEnvFloat('MODEL_SMART_OUTPUT_PRICE', 0),
     },
     
     [ModelTier.THINKING]: {
@@ -180,8 +198,8 @@ export const routingConfig: RoutingConfig = {
       provider: 'google',
       supportsTools: true,
       supportsCaching: false,
-      inputPricePerMillionTokens: 0,
-      outputPricePerMillionTokens: 0,
+      inputPricePerMillionTokens: getEnvFloat('MODEL_THINKING_INPUT_PRICE', 0),
+      outputPricePerMillionTokens: getEnvFloat('MODEL_THINKING_OUTPUT_PRICE', 0),
     },
     
     [ModelTier.CODING]: {
@@ -193,8 +211,8 @@ export const routingConfig: RoutingConfig = {
       provider: 'google',
       supportsTools: true,
       supportsCaching: false,
-      inputPricePerMillionTokens: 0,
-      outputPricePerMillionTokens: 0,
+      inputPricePerMillionTokens: getEnvFloat('MODEL_CODING_INPUT_PRICE', 0),
+      outputPricePerMillionTokens: getEnvFloat('MODEL_CODING_OUTPUT_PRICE', 0),
     },
   },
 };
