@@ -149,7 +149,7 @@ export const routingConfig: RoutingConfig = {
   mode: getEnv('ROUTING_MODE', 'hybrid') as RoutingMode,
   
   // Router model used for intelligent routing decisions (should be fast and cheap)
-  routerModelId: getEnv('MODEL_ROUTER', 'xiaomi/mimo-v2-flash:free'),
+  routerModelId: getEnv('MODEL_ROUTER', 'meta-llama/llama-3.2-3b-instruct:free'),
   
   // Confidence threshold: if heuristic confidence < this, use router model
   confidenceThreshold: getEnvNumber('ROUTING_CONFIDENCE_THRESHOLD', 80) / 100,
@@ -178,24 +178,24 @@ export const routingConfig: RoutingConfig = {
     
     [ModelTier.SMART]: {
       tier: ModelTier.SMART,
-      modelId: getEnv('MODEL_SMART', 'deepseek/deepseek-r1-0528'),
+      modelId: getEnv('MODEL_SMART', 'openai/gpt-oss-120b:free'),
       maxPromptTokens: getEnvNumber('MODEL_SMART_MAX_PROMPT', 32000),
       maxOutputTokens: getEnvNumber('MODEL_SMART_MAX_OUTPUT', 8000),
-      costTier: 'cheap',
-      provider: 'deepseek',
+      costTier: 'free',
+      provider: 'openai',
       supportsTools: true,
       supportsCaching: false,
-      inputPricePerMillionTokens: getEnvFloat('MODEL_SMART_INPUT_PRICE', 0.05),
-      outputPricePerMillionTokens: getEnvFloat('MODEL_SMART_OUTPUT_PRICE', 0.22),
+      inputPricePerMillionTokens: getEnvFloat('MODEL_SMART_INPUT_PRICE', 0),
+      outputPricePerMillionTokens: getEnvFloat('MODEL_SMART_OUTPUT_PRICE', 0),
     },
     
     [ModelTier.THINKING]: {
       tier: ModelTier.THINKING,
-      modelId: getEnv('MODEL_THINKING', 'google/gemma-3-27b-it:free'),
+      modelId: getEnv('MODEL_THINKING', 'allenai/olmo-3.1-32b-think:free'),
       maxPromptTokens: getEnvNumber('MODEL_THINKING_MAX_PROMPT', 64000),
       maxOutputTokens: getEnvNumber('MODEL_THINKING_MAX_OUTPUT', 16000),
       costTier: 'free',
-      provider: 'google',
+      provider: 'allenai',
       supportsTools: true,
       supportsCaching: false,
       inputPricePerMillionTokens: getEnvFloat('MODEL_THINKING_INPUT_PRICE', 0),
@@ -204,11 +204,11 @@ export const routingConfig: RoutingConfig = {
     
     [ModelTier.CODING]: {
       tier: ModelTier.CODING,
-      modelId: getEnv('MODEL_CODING', 'google/gemma-3-12b-it:free'),
+      modelId: getEnv('MODEL_CODING', 'kwaipilot/kat-coder-pro:free'),
       maxPromptTokens: getEnvNumber('MODEL_CODING_MAX_PROMPT', 32000),
       maxOutputTokens: getEnvNumber('MODEL_CODING_MAX_OUTPUT', 8000),
       costTier: 'free',
-      provider: 'google',
+      provider: 'kwaipilot',
       supportsTools: true,
       supportsCaching: false,
       inputPricePerMillionTokens: getEnvFloat('MODEL_CODING_INPUT_PRICE', 0),

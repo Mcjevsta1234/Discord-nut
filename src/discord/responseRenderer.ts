@@ -41,9 +41,9 @@ export class ProgressTracker {
   private updates: ProgressUpdate[] = [];
   private updateInterval?: NodeJS.Timeout;
   private spinnerIndex = 0;
-  private spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+  private spinnerFrames = ['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷'];
   private lastUpdateTime = 0;
-  private minUpdateInterval = 1500; // Update at most every 1.5 seconds
+  private minUpdateInterval = 800; // Update every 800ms for smooth animation within Discord limits
   private isClosed = false;
 
   constructor(message: DiscordMessage, initialEmbed: EmbedBuilder) {
@@ -75,7 +75,7 @@ export class ProgressTracker {
         // Message might have been deleted, stop spinner
         this.stopAnimatedSpinner();
       }
-    }, 500); // Check every 500ms, but rate-limited to 1.5s
+    }, 400); // Check every 400ms, rate-limited to 800ms for fluid animation
   }
 
   /**
