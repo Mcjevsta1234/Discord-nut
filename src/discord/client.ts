@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, Events } from 'discord.js';
+import { Client, GatewayIntentBits, Events, PermissionsBitField } from 'discord.js';
 import { config } from '../config';
 import { MessageHandler } from './messageHandler';
 import { OpenRouterService } from '../ai/openRouterService';
@@ -57,32 +57,20 @@ export class DiscordBot {
       console.log(`✅ Bot is ready! Logged in as ${readyClient.user.tag}`);
       console.log(`📊 Serving ${readyClient.guilds.cache.size} guilds`);
       
-      // Generate and display OAuth invite URL
-      const permissions = [
+      // Generate and display OAuth invite URL with proper permissions
+      const permissionBits = new PermissionsBitField([
+        'ViewChannel',
         'SendMessages',
-        'ReadMessages',
         'ReadMessageHistory',
-        'MentionEveryone',
+        'ManageMessages',
         'EmbedLinks',
         'AttachFiles',
-        'ManageMessages',
         'UseExternalEmojis',
         'AddReactions',
         'UseApplicationCommands',
-        'ViewChannel',
-      ];
-      const permissionBits = 0x00000800 | // View Channels
-                             0x00000400 | // Send Messages
-                             0x00001000 | // Manage Messages
-                             0x00008000 | // Embed Links
-                             0x00010000 | // Attach Files
-                             0x00020000 | // Read Message History
-                             0x00100000 | // Use External Emojis
-                             0x00040000 | // Add Reactions
-                             0x80000000 | // Use Application Commands
-                             0x00000001;  // Mention @everyone/@here/@all roles
+      ]);
       
-      const oauthUrl = `https://discord.com/api/oauth2/authorize?client_id=${readyClient.user.id}&permissions=${permissionBits}&scope=bot%20applications.commands`;
+      const oauthUrl = `https://discord.com/api/oauth2/authorize?client_id=${readyClient.user.id}&permissions=${permissionBits.bitfield}&scope=bot%20applications.commands`;
       
       console.log('\n🔗 OAuth Invite URL:');
       console.log(oauthUrl);
