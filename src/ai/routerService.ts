@@ -192,24 +192,116 @@ export class RouterService {
   }
 
   /**
+   * Allowed route values for strict validation
+   */
+  private static readonly VALID_ROUTES = ['chat', 'tool', 'image', 'coding'] as const;
+  private static readonly ROUTE_TO_TIER: Record<string, ModelTier> = {
+    'chat': ModelTier.SMART,
+    'tool': ModelTier.SMART,
+    'image': ModelTier.INSTANT,
+    'coding': ModelTier.CODING,
+  };
+  private static readonly MIN_CONFIDENCE = 0.3;
+
+  /**
+   * Validate router response JSON against strict contract
+   * Returns parsed result or null if invalid
+   */
+  private validateRouterResponse(content: string, modelName: string): {
+    route: string;
+    confidence: number;
+    reason: string;
+  } | null {
+    // Check for empty content
+    if (!content || content.trim().length === 0) {
+      console.warn(`⚠️ LLM router invalid output | model: ${modelName} | raw content length: 0`);
+      return null;
+    }
+
+    // Try to parse JSON
+    let parsed: unknown;
+    try {
+      // Extract JSON from response (handle potential markdown code blocks)
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        console.warn(`⚠️ LLM router invalid output | model: ${modelName} | raw content length: ${content.length} | no JSON object found`);
+        return null;
+      }
+      parsed = JSON.parse(jsonMatch[0]);
+    } catch {
+      console.warn(`⚠️ LLM router invalid output | model: ${modelName} | raw content length: ${content.length} | JSON parse failed`);
+      return null;
+    }
+
+    // Validate structure
+    if (typeof parsed !== 'object' || parsed === null) {
+      console.warn(`⚠️ LLM router invalid output | model: ${modelName} | raw content length: ${content.length} | not an object`);
+      return null;
+    }
+
+    const obj = parsed as Record<string, unknown>;
+
+    // Validate required fields
+    if (typeof obj.route !== 'string') {
+      console.warn(`⚠️ LLM router invalid output | model: ${modelName} | raw content length: ${content.length} | missing or invalid 'route' field`);
+      return null;
+    }
+
+    if (typeof obj.confidence !== 'number') {
+      console.warn(`⚠️ LLM router invalid output | model: ${modelName} | raw content length: ${content.length} | missing or invalid 'confidence' field`);
+      return null;
+    }
+
+    if (typeof obj.reason !== 'string') {
+      console.warn(`⚠️ LLM router invalid output | model: ${modelName} | raw content length: ${content.length} | missing or invalid 'reason' field`);
+      return null;
+    }
+
+    // Validate route is one of allowed values
+    const routeLower = obj.route.toLowerCase();
+    if (!RouterService.VALID_ROUTES.includes(routeLower as typeof RouterService.VALID_ROUTES[number])) {
+      console.warn(`⚠️ LLM router invalid output | model: ${modelName} | raw content length: ${content.length} | invalid route value: "${obj.route}"`);
+      return null;
+    }
+
+    // Validate confidence is in range and meets minimum threshold
+    if (obj.confidence < 0 || obj.confidence > 1) {
+      console.warn(`⚠️ LLM router invalid output | model: ${modelName} | raw content length: ${content.length} | confidence out of range: ${obj.confidence}`);
+      return null;
+    }
+
+    if (obj.confidence < RouterService.MIN_CONFIDENCE) {
+      console.warn(`⚠️ LLM router invalid output | model: ${modelName} | raw content length: ${content.length} | confidence below threshold: ${obj.confidence} < ${RouterService.MIN_CONFIDENCE}`);
+      return null;
+    }
+
+    return {
+      route: routeLower,
+      confidence: obj.confidence,
+      reason: obj.reason,
+    };
+  }
+
+  /**
    * Route using a small router LLM (for ambiguous cases)
-   * Uses Gemma 9B with optimized prompt for classification
+   * Enforces strict JSON output contract with fail-safe fallback to heuristics
    */
   private async routeByModel(
     userMessage: string,
     flags: RoutingFlags,
     conversationHistory: Message[]
   ): Promise<RoutingDecision> {
+    // Strict JSON-only prompt
     const routerPrompt: Message[] = [
       {
         role: 'user',
-        content: `You are a message classifier. Read the message and classify it into ONE tier.
+        content: `You are a message classifier. Classify the message into a route category.
 
-TIERS:
-• INSTANT: Simple greetings, small talk, short questions (under 15 words)
-• SMART: Regular conversations, questions, tool requests, normal queries  
-• THINKING: Complex analysis, detailed explanations, multi-step reasoning
-• CODING: Code writing, debugging, refactoring, technical implementation
+ROUTES:
+• chat: Regular conversations, questions, general queries
+• tool: Requests requiring tools, search, calculations, lookups
+• image: Simple greetings, small talk, image-related requests
+• coding: Code writing, debugging, refactoring, technical implementation
 
 MESSAGE: "${userMessage.substring(0, 250)}"
 
@@ -219,15 +311,17 @@ CONTEXT:
 - Complex request: ${flags.explicitDepthRequest ? 'yes' : 'no'}
 - Short message: ${flags.isShortQuery ? 'yes' : 'no'}
 
-Respond with ONLY ONE WORD - the tier name. No punctuation, no explanation.
-
-Tier:`,
+You MUST respond with ONLY a JSON object in this EXACT format, no other text:
+{"route": "chat" | "tool" | "image" | "coding", "confidence": <number 0-1>, "reason": "<brief explanation>"}`,
       },
     ];
 
-    // Try primary router model first
+    // Get heuristic decision first - this becomes fallback if router fails
+    const heuristicFallback = this.routeByHeuristics(flags, userMessage);
+
+    // Try primary router model
     let response;
-    let usedFallback = false;
+    let usedModel = routingConfig.routerModelId;
     
     try {
       response = await this.aiService.chatCompletionWithMetadata(
@@ -235,15 +329,15 @@ Tier:`,
         routingConfig.routerModelId,
         {
           temperature: 0,
-          max_tokens: 20,
+          max_tokens: 100,
         }
       );
     } catch (primaryError) {
-      console.warn(`⚠️ Primary router (${routingConfig.routerModelId}) failed:`, 
+      console.warn(`⚠️ Primary router API call failed (${routingConfig.routerModelId}):`, 
         primaryError instanceof Error ? primaryError.message : String(primaryError)
       );
       
-      // Try fallback router
+      // Try fallback router model
       try {
         console.log(`🔄 Trying fallback router: ${routingConfig.fallbackRouterModelId}`);
         response = await this.aiService.chatCompletionWithMetadata(
@@ -251,62 +345,43 @@ Tier:`,
           routingConfig.fallbackRouterModelId,
           {
             temperature: 0,
-            max_tokens: 20,
+            max_tokens: 100,
           }
         );
-        usedFallback = true;
-        console.log('✅ Fallback router succeeded');
+        usedModel = routingConfig.fallbackRouterModelId;
+        console.log('✅ Fallback router API call succeeded');
       } catch (fallbackError) {
-        console.error('❌ Fallback router also failed:', 
+        console.warn(`⚠️ Fallback router API call also failed (${routingConfig.fallbackRouterModelId}):`, 
           fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
         );
-        throw fallbackError; // Re-throw to use heuristic fallback
+        // Both API calls failed - return heuristic decision (no throw)
+        console.log('🎯 Using heuristic routing as authoritative decision');
+        return heuristicFallback;
       }
     }
 
-    try {
-      const response = await this.aiService.chatCompletionWithMetadata(
-        routerPrompt,
-        routingConfig.routerModelId,
-        {
-          temperature: 0,
-          max_tokens: 32,
-        }
-      );
-
-      const tierText = response.content.trim().toUpperCase();
-      
-      // Parse tier with robust fallback
-      let tier: ModelTier;
-      if (tierText.includes('INSTANT')) {
-        tier = ModelTier.INSTANT;
-      } else if (tierText.includes('THINKING')) {
-        tier = ModelTier.THINKING;
-      } else if (tierText.includes('CODING')) {
-        tier = ModelTier.CODING;
-      } else if (tierText.includes('SMART')) {
-        tier = ModelTier.SMART;
-      } else {
-        // Invalid or empty output → default to SMART (GUARDRAIL)
-        console.warn(`⚠️ Router model returned invalid tier: "${tierText}", defaulting to SMART`);
-        tier = ModelTier.SMART;
-      }
-
-      const modelConfig = getTierConfig(tier);
-
-      return {
-        tier,
-        modelId: modelConfig.modelId,
-        modelConfig,
-        routingMethod: 'routerModel',
-        routingReason: `Router model selected ${tier}${usedFallback ? ' (via fallback)' : ''}`,
-        confidence: usedFallback ? 0.85 : 0.95,
-        flags,
-      };
-    } catch (error) {
-      console.error('Router model error:', error);
-      throw error;
+    // Validate the router response using strict contract
+    const validatedResult = this.validateRouterResponse(response.content, usedModel);
+    
+    if (!validatedResult) {
+      // Router output invalid - fall back to heuristics (no throw, no continue with empty data)
+      console.log('🎯 Using heuristic routing as authoritative decision (router output invalid)');
+      return heuristicFallback;
     }
+
+    // Router succeeded with valid output
+    const tier = RouterService.ROUTE_TO_TIER[validatedResult.route] || ModelTier.SMART;
+    const modelConfig = getTierConfig(tier);
+
+    return {
+      tier,
+      modelId: modelConfig.modelId,
+      modelConfig,
+      routingMethod: 'routerModel',
+      routingReason: `Router: ${validatedResult.reason} (route: ${validatedResult.route})`,
+      confidence: validatedResult.confidence,
+      flags,
+    };
   }
 
   /**
