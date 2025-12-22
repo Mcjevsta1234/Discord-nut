@@ -112,6 +112,19 @@ export class OpenRouterService {
     } catch (error) {
       const responseTimestamp = Date.now();
       
+      // Log detailed error information
+      if (axios.isAxiosError(error)) {
+        console.error('OpenRouter API Error Details:', {
+          status: error.response?.status,
+          statusText: error.response?.statusText,
+          data: error.response?.data,
+          message: error.message,
+          model: selectedModel,
+        });
+      } else {
+        console.error('Non-Axios error in chatCompletionWithMetadata:', error);
+      }
+      
       // Return error metadata
       const errorMetadata: LLMResponseMetadata = {
         model: selectedModel,
@@ -124,9 +137,8 @@ export class OpenRouterService {
       };
 
       if (axios.isAxiosError(error)) {
-        throw new Error(
-          `OpenRouter API error: ${error.response?.data?.error?.message || error.message}`
-        );
+        const errorMsg = error.response?.data?.error?.message || error.message;
+        throw new Error(`OpenRouter API error: ${errorMsg}`);
       }
       throw error;
     }

@@ -918,6 +918,8 @@ Examples:
 ✅ GOOD: "Hey! It's <t:1766430477:f> right now ✨ What's up?"
 ✅ GOOD: "The current time is <t:1766430477:f> 🕐"
 
+${tier === 'INSTANT' ? '\nREMINDER: Keep Discord timestamps like <t:1234567890:f> EXACTLY as-is. Wrap tool data in friendly conversation.' : ''}
+
 Now respond conversationally with the tool data:`,
         },
       ];
@@ -926,23 +928,18 @@ Now respond conversationally with the tool data:`,
       let guidedPrompt = responsePrompt;
       if (tier === 'CODING') {
         guidedPrompt = this.addCodingGuidance(responsePrompt);
-      } else if (tier === 'INSTANT') {
-        // INSTANT tier: Extra emphasis on being conversational with tool results
-        guidedPrompt = [
-          ...responsePrompt,
-          {
-            role: 'system',
-            content: 'REMINDER: Keep Discord timestamps like <t:1234567890:f> EXACTLY as-is. Wrap tool data in friendly conversation. Do NOT return raw output alone.',
-          },
-        ];
-      } else if (tier) {
+      } else if (tier && tier !== 'INSTANT') {
         guidedPrompt = this.addConciseGuidance(responsePrompt);
       }
+      // Note: INSTANT tier reminder is now inline in the user message above to avoid message ordering issues
+      
+      console.log(`📝 Calling LLM for final response with ${guidedPrompt.length} messages, model: ${model}, tier: ${tier}`);
       const response = await this.aiService.chatCompletionWithMetadata(guidedPrompt, model);
+      console.log(`✅ LLM response received, length: ${response.content?.length || 0}`);
 
       // Ensure valid response
       if (!response.content || response.content.trim().length === 0) {
-        console.warn('Empty response from AI after tool execution, generating fallback');
+        console.warn('⚠️ Empty response from AI after tool execution, generating fallback');
         // Generate a basic conversational fallback with tool results
         const fallbackMessage = this.generateToolResultFallback(userQuery, toolContext);
         return {
@@ -953,7 +950,8 @@ Now respond conversationally with the tool data:`,
 
       return { content: response.content, metadata: response.metadata };
     } catch (error) {
-      console.error('Error generating final response:', error);
+      console.error('❌ Error generating final response:', error);
+      console.error('Error details:', error instanceof Error ? error.message : String(error));
       
       // CRITICAL: Don't lose tool results even if LLM fails
       const toolResults = executionResult.results
