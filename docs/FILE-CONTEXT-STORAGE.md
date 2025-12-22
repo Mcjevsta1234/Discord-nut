@@ -215,3 +215,18 @@ Implementation guidance (TypeScript only, no routing/persona changes):
 Expected Results:
 - No accidental context deletion.
 - Agent workflows remain isolated and deterministic.
+
+## Module Layout
+
+All context logic is encapsulated in a single service to keep handlers lean and free of business logic:
+
+- `ContextService` (orchestrator)
+  - Loads/saves chat messages in `{ role, content }[]` format
+  - Trims to size and refreshes expirations via storage
+  - Clears: user, channel, guild
+  - No LLM/prompt logic
+
+- `FileContextManager` (storage)
+  - Implements filesystem persistence, expiration, and bulk-deletes
+
+Handlers (e.g., `messageHandler`, admin commands) call `ContextService` only; they do not touch storage directly.

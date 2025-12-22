@@ -9,7 +9,7 @@ import {
 import { config } from '../config';
 import { PromptManager } from './promptManager';
 import { AdminConfigManager } from './adminConfig';
-import { FileContextManager } from '../ai/fileContextManager';
+import { ContextService } from '../ai/contextService';
 import { getAllPersonaIds, getPersona } from '../personas.config';
 import { setDebugMode, parseDebugMode, getDebugMode, getDebugModeDescription } from './debugMode';
 
@@ -18,13 +18,13 @@ type PromptAction = 'replace' | 'append' | 'clear';
 export class AdminCommandHandler {
   private client: Client;
   private promptManager: PromptManager;
-  private fileContextManager: FileContextManager;
+  private contextService: ContextService;
   private adminConfig: AdminConfigManager;
 
   constructor(client: Client, promptManager: PromptManager) {
     this.client = client;
     this.promptManager = promptManager;
-    this.fileContextManager = new FileContextManager();
+    this.contextService = new ContextService();
     this.adminConfig = new AdminConfigManager();
   }
 
@@ -297,7 +297,7 @@ export class AdminCommandHandler {
     }
     const guildId = interaction.guildId;
     const channelId = interaction.channelId;
-    await this.fileContextManager.deleteChannelContexts(guildId, channelId);
+    await this.contextService.clearChannel(guildId, channelId);
     await interaction.reply({
       content: '🧹 Cleared all conversation contexts for this channel.',
       ephemeral: true,
@@ -315,7 +315,7 @@ export class AdminCommandHandler {
       return;
     }
     const guildId = interaction.guildId;
-    await this.fileContextManager.deleteGuildContexts(guildId);
+    await this.contextService.clearGuild(guildId);
     await interaction.reply({
       content: '🧹 Cleared all conversation contexts for this server.',
       ephemeral: true,
@@ -337,13 +337,13 @@ export class AdminCommandHandler {
       const channelId = interaction.channelId;
 
       if (guildId) {
-        await this.fileContextManager.deleteContext(userId, channelId, guildId);
+        await this.contextService.clearUser(userId, channelId, guildId);
         await interaction.reply({
           content: '🧹 Your context for this channel has been cleared. Other users and channels are unaffected.',
           ephemeral: true,
         });
       } else {
-        await this.fileContextManager.deleteContext(userId);
+        await this.contextService.clearUser(userId);
         await interaction.reply({
           content: '🧹 Your DM context has been cleared.',
           ephemeral: true,

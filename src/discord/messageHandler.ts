@@ -2,6 +2,7 @@ import { Message as DiscordMessage, Client, AttachmentBuilder, EmbedBuilder, Act
 import { OpenRouterService, Message } from '../ai/openRouterService';
 import { ImageService } from '../ai/imageService';
 import { MemoryManager } from '../ai/memoryManager';
+import { ContextService } from '../ai/contextService';
 import { FileContextManager } from '../ai/fileContextManager';
 import { PromptManager } from './promptManager';
 import { Planner, ActionPlan } from '../ai/planner';
@@ -26,6 +27,7 @@ export class MessageHandler {
   private memoryManager: MemoryManager;
   private fileContextManager: FileContextManager;
   private promptManager: PromptManager;
+  private contextService: ContextService;
   private planner: Planner;
   private executor: ActionExecutor;
   private router: RouterService;
@@ -43,6 +45,7 @@ export class MessageHandler {
     this.memoryManager = memoryManager;
     this.fileContextManager = new FileContextManager();
     this.promptManager = promptManager;
+    this.contextService = new ContextService();
     this.planner = new Planner(aiService);
     this.executor = new ActionExecutor(aiService);
     this.router = new RouterService(aiService);
@@ -109,7 +112,8 @@ export class MessageHandler {
 
       // LOAD CONTEXT: Load isolated conversation history from file storage
       // Guilds: guildId + channelId + userId, DMs: userId only
-      const fileContext = await this.fileContextManager.loadContext(userId, channelId, guildId);
+      // Load isolated context via ContextService (no business logic here)
+      const fileContext = await this.contextService.load(userId, channelId, guildId);
       console.log(`📂 Loaded file context: ${fileContext.length} messages for user ${userId}`);
 
       // Build user message
@@ -333,8 +337,8 @@ export class MessageHandler {
             role: 'assistant',
             content: finalResponse,
           };
-          // Store user message and assistant response in isolated context
-          await this.fileContextManager.appendMessages(userId, [userMessage, cleanResponse], channelId, guildId);
+          // Persist user + assistant messages using ContextService
+          await this.contextService.appendUserAndAssistant(userId, userMessage, cleanResponse, channelId, guildId);
           console.log(`✓ Persisted context: user + response for user ${userId}`);
         } catch (error) {
           console.error('Failed to persist context to file:', error);
