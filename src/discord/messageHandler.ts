@@ -161,6 +161,22 @@ export class MessageHandler {
 
       // Get message history for context (in-memory)
       const conversation = this.memoryManager.getConversationContext(channelId);
+      
+      // Check if replying to a message - add referenced message context
+      let referencedMessageContent = '';
+      if (message.reference?.messageId) {
+        try {
+          const referencedMsg = await message.channel.messages.fetch(message.reference.messageId);
+          referencedMessageContent = referencedMsg.content;
+          // Add referenced message to conversation context for planner
+          if (referencedMessageContent) {
+            console.log(`🔗 Reply detected - adding context from referenced message`);
+          }
+        } catch (err) {
+          console.log('Could not fetch referenced message for context');
+        }
+      }
+      
       const composedPrompt = this.promptManager.composeChatPrompt(
         channelId,
         conversation,
@@ -196,14 +212,21 @@ export class MessageHandler {
 
         const planStartTime = Date.now();
         let plan: ActionPlan;
+        // Combine current message with referenced message context for planning
+        const messageWithContext = referencedMessageContent
+          ? `[Previous message context: "${referencedMessageContent}"]
+
+Current message: ${message.content}`
+          : message.content;
+        
         const plannerNeeded = routingDecision.tier === 'INSTANT'
           ? true
-          : this.shouldUsePlanner(message.content);
+          : this.shouldUsePlanner(messageWithContext);
         
         if (routingDecision.tier === 'INSTANT') {
           // Synthetic planning for INSTANT tier (no LLM call)
-          // Pass the message content for heuristic-based tool detection
-          plan = this.planner.createSyntheticPlanForInstant(message.content);
+          // Pass messageWithContext for context-aware detection (e.g., "generate that")
+          plan = this.planner.createSyntheticPlanForInstant(messageWithContext);
           console.log(`Action plan: INSTANT tier (synthetic, no LLM call)`);
         } else if (!plannerNeeded) {
           plan = {
@@ -214,9 +237,9 @@ export class MessageHandler {
           };
           console.log('Action plan: direct response (planner skipped)');
         } else {
-          // LLM-based planning for other tiers
+          // LLM-based planning for other tiers - pass context for better image detection
           plan = await this.planner.planActionsWithRetry(
-            message.content,
+            messageWithContext,
             fileContext,
             personaId
           );
@@ -645,9 +668,21 @@ export class MessageHandler {
       'www.',
       'url',
       'link please',
-      'image request',
-      'generate an image',
-      'draw an image',
+      'image',
+      'picture',
+      'photo',
+      'generate',
+      'create',
+      'draw',
+      'make an',
+      'show me a',
+      'paint',
+      'sketch',
+      'render',
+      'visualize',
+      'visualise',
+      'illustration',
+      'artwork',
       'minecraft',
       'mc network',
       'mc server',

@@ -122,6 +122,21 @@ export class Planner {
       }
     }
 
+    // Image generation detection - ALWAYS use for image requests
+    if (/(generate|create|draw|make|show me|give me).*(image|picture|pic|photo|art|drawing|illustration|visual)|image of|picture of|draw me|paint|sketch|render|visuali[sz]e/i.test(userMessage)) {
+      console.log('✅ IMAGE REQUEST DETECTED - using image generation');
+      return {
+        actions: [{
+          type: 'image',
+          imagePrompt: userMessage,
+          imageResolution: { width: 512, height: 512 },
+        }],
+        reasoning: 'Image generation request detected',
+        metadata: undefined,
+        isFallback: false,
+      };
+    }
+
     // Default to chat for everything else
     console.log('❌ No tool pattern matched - using chat');
     return {
@@ -162,12 +177,14 @@ Detection rules - USE TOOLS AGGRESSIVELY - NEVER ANSWER WITHOUT TOOLS:
 - Web searches ("search for", "find", "look up") → MUST use "searxng_search" tool
 - URLs/links in message → MUST use "fetch_url" tool
 - Minecraft server queries (ANY of: "server status", "servers up/down/online", "mc network", "network status", "server ips", "minecraft servers", "witchyworlds") → MUST use "minecraft_status" tool
-- Image requests (e.g., "draw", "generate image", "create a picture") → use "image" type
+- Image requests ("generate", "create", "draw", "make", "show me" + "image/picture/art", "visualize", "paint", "sketch") → use "image" type
 - General conversation that doesn't fit any tool → use "chat" type
 
 CRITICAL RULES:
 - Time queries: NEVER respond without calling get_time tool first
 - Minecraft queries: NEVER respond without calling minecraft_status tool first
+- Image requests: ALWAYS use "image" type, never try to describe images with chat
+- For vague follow-ups like "generate that" or "create that please", check conversation context for previous image prompts
 - GitHub repo summaries require action="readme" parameter
 - For minecraft_status: don't specify server param if asking about default/network servers
 - ALWAYS prefer tools over chat for deterministic tasks
@@ -190,20 +207,26 @@ For tool usage:
   "reasoning": "brief explanation"
 }
 
-For image generation (ONLY when user explicitly or clearly requests visual/image creation):
+For image generation (when user requests visual/image creation OR references a previous image prompt):
 {
   "actions": [
-    {"type": "image", "imagePrompt": "user's exact prompt", "imageResolution": {"width": 512, "height": 512}}
+    {"type": "image", "imagePrompt": "detailed description", "imageResolution": {"width": 512, "height": 512}}
   ],
   "reasoning": "brief explanation"
 }
 
+Image Generation Rules:
+- ALWAYS use "image" type for: "generate", "create", "draw", "make", "show me" + "image/picture/art/drawing"
+- For follow-ups like "generate that", check if previous message contained an image prompt and use it
+- For vague requests like "create that please", look at conversation context for what "that" refers to
+- Use user's exact words for imagePrompt, or reconstruct from context if they're referencing previous discussion
+- Default resolution: 512x512, unless user specifies dimensions
+
 Routing rules:
 - ALWAYS prefer tools over chat for deterministic tasks (math, conversions, repo info, server status, time)
-- Use "image" type ONLY when user explicitly asks for image generation, pictures, drawings, or visual content
-- If unclear whether they want an image, use "chat" and ask for clarification
-- Default to "chat" only for general conversation that doesn't fit any tool
-- For imagePrompt: Use the user's EXACT words/prompt without modification`,
+- Use "image" type aggressively for ANY visual/picture/drawing request
+- For imagePrompt: Use the user's EXACT words/prompt, or reconstruct from conversation context
+- Default to "chat" only for general conversation that doesn't fit any tool`,
       },
       ...conversationContext.slice(-2), // Minimal context
       {
