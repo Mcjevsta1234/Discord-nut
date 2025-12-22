@@ -55,7 +55,7 @@ export class MessageHandler {
     this.chatLogger = new ChatLogger();
   }
 
-  shouldRespond(message: DiscordMessage): boolean {
+  async shouldRespond(message: DiscordMessage): Promise<boolean> {
     // Don't respond to bots
     if (message.author.bot) return false;
 
@@ -67,22 +67,30 @@ export class MessageHandler {
     // 1. Check if THIS bot is directly mentioned
     const isBotMentioned = message.mentions.has(botId || '');
 
-    // 2. Check if THIS bot was replied to
-    const isReplyToBot =
-      message.reference?.messageId !== undefined &&
-      message.type === 19; // REPLY type
+    // 2. Check if THIS bot's message was replied to
+    let isReplyToBot = false;
+    if (message.reference?.messageId && message.type === 19) {
+      try {
+        // Fetch the referenced message to check if it's from the bot
+        const referencedMessage = await message.channel.messages.fetch(message.reference.messageId);
+        isReplyToBot = referencedMessage.author.id === botId;
+      } catch (error) {
+        // If we can't fetch the message, assume it's not a reply to the bot
+        isReplyToBot = false;
+      }
+    }
 
     // 3. Check for explicit persona mention (hey emma, emma, etc)
     const detectedPersona = this.promptManager.detectPersonaFromMessage(
       message.content
     );
 
-    // Only respond if: bot mentioned OR replied to OR explicit persona mention
+    // Only respond if: bot mentioned OR replied to bot's message OR explicit persona mention
     return isBotMentioned || isReplyToBot || detectedPersona !== null;
   }
 
   async handleMessage(message: DiscordMessage): Promise<void> {
-    if (!this.shouldRespond(message)) {
+    if (!(await this.shouldRespond(message))) {
       return;
     }
 
