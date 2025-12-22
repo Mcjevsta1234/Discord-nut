@@ -158,3 +158,34 @@ Example output:
   "expiresIn": 86400000
 }
 ```
+
+## Lifecycle Rules
+
+- **Explicit Clear Only:** Context is cleared ONLY via the `/clear-context` slash command.
+  - Natural language phrases like "reset" or "start over" do NOT clear context.
+  - No NLP-based reset detection is used.
+- **Expiration Handling:** Expired context is automatically ignored and removed during cleanup.
+- **Strict Scoping:**
+  - In guilds, context NEVER falls back to broader scopes (no server-wide or channel-wide sharing).
+  - In DMs, context uses the user ID only (no guild association).
+
+### Slash Command: Clear Context
+
+Run in the desired scope:
+- **Guild channel:** clears YOUR context at `context/guilds/{guildId}/{channelId}/{userId}.json`
+- **DM:** clears YOUR context at `context/dms/{userId}.json`
+
+## Agentic Workflows
+
+When routing to agentic tasks (e.g., external agents like OpenHands):
+- Do NOT pass stored chat context into the agent run.
+- Agent runs must ALWAYS start clean.
+
+Implementation guidance (TypeScript only, no routing/persona changes):
+- Use file context for chat prompts only.
+- For agent runs, start with an empty context array.
+- Never auto-reset or auto-delete context based on user phrasing.
+
+Expected Results:
+- No accidental context deletion.
+- Agent workflows remain isolated and deterministic.

@@ -8,6 +8,7 @@ import {
 } from 'discord.js';
 import { config } from '../config';
 import { PromptManager } from './promptManager';
+import { FileContextManager } from '../ai/fileContextManager';
 import { getAllPersonaIds, getPersona } from '../personas.config';
 import { setDebugMode, parseDebugMode, getDebugMode, getDebugModeDescription } from './debugMode';
 
@@ -16,10 +17,12 @@ type PromptAction = 'replace' | 'append' | 'clear';
 export class AdminCommandHandler {
   private client: Client;
   private promptManager: PromptManager;
+  private fileContextManager: FileContextManager;
 
   constructor(client: Client, promptManager: PromptManager) {
     this.client = client;
     this.promptManager = promptManager;
+    this.fileContextManager = new FileContextManager();
   }
 
   async registerCommands(): Promise<void> {
@@ -77,6 +80,10 @@ export class AdminCommandHandler {
         )
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .toJSON(),
+      new SlashCommandBuilder()
+        .setName('clear-context')
+        .setDescription('Clear YOUR stored conversation context for this channel or DM (no other users affected)')
+        .toJSON(),
     ];
 
     await this.client.application?.commands.set(commands);
@@ -84,7 +91,9 @@ export class AdminCommandHandler {
 
   async handleInteraction(interaction: Interaction): Promise<void> {
     if (!interaction.isChatInputCommand()) return;
-    if (!this.hasPermission(interaction)) {
+    // Allow clear-context for all users; other admin commands require ManageGuild
+    const isClearContext = interaction.commandName === 'clear-context';
+    if (!isClearContext && !this.hasPermission(interaction)) {
       await interaction.reply({
         content: 'You need the Manage Server permission to run this command.',
         ephemeral: true,
@@ -104,6 +113,11 @@ export class AdminCommandHandler {
 
     if (interaction.commandName === 'debug') {
       await this.handleDebugMode(interaction);
+      return;
+    }
+
+    if (interaction.commandName === 'clear-context') {
+      await this.handleClearContext(interaction);
       return;
     }
   }
@@ -181,5 +195,41 @@ export class AdminCommandHandler {
       content: `🐛 **Debug mode set to: ${mode.toUpperCase()}**\n\n${description}\n\nThis setting applies to ${guildId ? 'this server' : 'this channel'}.`,
       ephemeral: true,
     });
+  }
+
+  /**
+   * Handle /clear-context command - explicit context deletion only
+   * Scope:
+   * - Guilds: delete context for invoking user in THIS channel only
+   * - DMs: delete user-scoped context
+   */
+  private async handleClearContext(
+    interaction: ChatInputCommandInteraction
+  ): Promise<void> {
+    try {
+      const userId = interaction.user.id;
+      const guildId = interaction.guildId || undefined;
+      const channelId = interaction.channelId;
+
+      if (guildId) {
+        await this.fileContextManager.deleteContext(userId, channelId, guildId);
+        await interaction.reply({
+          content: '🧹 Your context for this channel has been cleared. Other users and channels are unaffected.',
+          ephemeral: true,
+        });
+      } else {
+        await this.fileContextManager.deleteContext(userId);
+        await interaction.reply({
+          content: '🧹 Your DM context has been cleared.',
+          ephemeral: true,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to clear context:', error);
+      await interaction.reply({
+        content: 'Sorry, failed to clear context. Please try again later.',
+        ephemeral: true,
+      });
+    }
   }
 }
