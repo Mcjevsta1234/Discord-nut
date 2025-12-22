@@ -8,6 +8,7 @@ import { OpenRouterService, Message } from './openRouterService';
 import { ToolExecutionMetadata } from './llmMetadata';
 import { ImageService } from './imageService';
 import { AttachmentBuilder, Message as DiscordMessage } from 'discord.js';
+import { PromptNormalizer } from './promptNormalizer';
 
 export interface ActionResult {
   success: boolean;
@@ -148,9 +149,21 @@ export class ActionExecutor {
 
   private async executeTool(action: PlannedAction): Promise<ActionResult> {
     try {
+      // Normalize tool parameters if they contain user text
+      let params = action.toolParams || {};
+      
+      // For tools with text inputs (query, search terms, etc.), normalize them
+      if (params.query && typeof params.query === 'string') {
+        const normalized = PromptNormalizer.normalizeForTool(params.query, action.toolName || 'unknown');
+        if (normalized.wasNormalized) {
+          console.log(`📝 Tool param normalized: "${normalized.original.substring(0, 30)}..." -> "${normalized.normalized.substring(0, 30)}..."`);
+          params = { ...params, query: normalized.normalized };
+        }
+      }
+      
       const toolResult = await this.aiService.executeMCPTool(
         action.toolName!,
-        action.toolParams || {}
+        params
       );
 
       if (!toolResult) {
@@ -201,8 +214,16 @@ export class ActionExecutor {
         };
       }
 
+      // Normalize prompt before sending to image model
+      // Handles cases where planner passed raw user message
+      const normalizedPrompt = PromptNormalizer.normalizeForImage(action.imagePrompt);
+      
+      if (normalizedPrompt.wasNormalized) {
+        console.log(`📝 Image prompt normalized in executor: "${normalizedPrompt.original.substring(0, 40)}..." -> "${normalizedPrompt.normalized.substring(0, 40)}..."`);
+      }
+
       const result = await this.imageService.generateImage({
-        prompt: action.imagePrompt,
+        prompt: normalizedPrompt.normalized,
         width: action.imageResolution?.width || 512,
         height: action.imageResolution?.height || 512,
       });

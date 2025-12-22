@@ -5,6 +5,7 @@
 
 import { OpenRouterService, Message } from './openRouterService';
 import { LLMResponseMetadata } from './llmMetadata';
+import { PromptNormalizer } from './promptNormalizer';
 
 export interface PlannedAction {
   type: 'tool' | 'image' | 'chat';
@@ -125,10 +126,15 @@ export class Planner {
     // Image generation detection - ALWAYS use for image requests
     if (/(generate|create|draw|make|show me|give me).*(image|picture|pic|photo|art|drawing|illustration|visual)|image of|picture of|draw me|paint|sketch|render|visuali[sz]e/i.test(userMessage)) {
       console.log('✅ IMAGE REQUEST DETECTED - using image generation');
+      
+      // Normalize prompt: remove "hey emma generate an image of" -> clean description
+      const normalizedPrompt = PromptNormalizer.normalizeForImage(userMessage);
+      console.log(`📝 Prompt normalized: "${normalizedPrompt.original.substring(0, 50)}..." -> "${normalizedPrompt.normalized.substring(0, 50)}..."`);
+      
       return {
         actions: [{
           type: 'image',
-          imagePrompt: userMessage,
+          imagePrompt: normalizedPrompt.normalized,
           imageResolution: { width: 512, height: 512 },
         }],
         reasoning: 'Image generation request detected',
@@ -291,8 +297,23 @@ Routing rules:
       };
     }
 
+    // Normalize image prompts from LLM planner
+    const normalizedActions = filteredActions.map((action: PlannedAction) => {
+      if (action.type === 'image' && action.imagePrompt) {
+        const normalized = PromptNormalizer.normalizeForImage(action.imagePrompt);
+        if (normalized.wasNormalized) {
+          console.log(`📝 Image prompt normalized from planner: "${normalized.original.substring(0, 40)}..." -> "${normalized.normalized.substring(0, 40)}..."`);
+        }
+        return {
+          ...action,
+          imagePrompt: normalized.normalized,
+        };
+      }
+      return action;
+    });
+
     return {
-      actions: filteredActions,
+      actions: normalizedActions,
       reasoning: parsed.reasoning || 'Planned actions',
       metadata,
       isFallback: false,
