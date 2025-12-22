@@ -644,11 +644,20 @@ export class MessageHandler {
       'generate an image',
       'draw an image',
       'minecraft',
+      'mc network',
+      'mc server',
       'server status',
       'server up',
       'server down',
+      'servers online',
+      'servers offline',
       'are the servers',
       'how are the servers',
+      'server ip',
+      'server ips',
+      'minecraft servers',
+      'network status',
+      'witchyworlds',
     ];
 
     if (toolKeywords.some(keyword => normalized.includes(keyword))) {
@@ -673,7 +682,7 @@ export class MessageHandler {
       return true;
     }
 
-    if (/(what time is it|current time|time zone|timezone|utc offset)/.test(normalized)) {
+    if (/(what time|current time|what's the time|time is it|time zone|timezone|utc offset|tell me the time|show me the time)/.test(normalized)) {
       return true;
     }
 

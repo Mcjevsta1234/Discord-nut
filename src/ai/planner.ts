@@ -85,21 +85,21 @@ export class Planner {
       };
     }
 
-    // Time queries
-    if (/(what time|current time|what's the time|time zone|timezone|utc offset)/.test(normalized)) {
+    // Time queries - ALWAYS use tool, never respond without it
+    if (/(what time|current time|what's the time|time is it|time zone|timezone|utc offset|tell me the time|show me the time)/.test(normalized)) {
       return {
         actions: [{ type: 'tool', toolName: 'get_time', toolParams: {} }],
-        reasoning: 'Time query detected',
+        reasoning: 'Time query detected - must use tool',
         metadata: undefined,
         isFallback: false,
       };
     }
 
-    // Minecraft server status - broad detection
-    if (/(minecraft|\bmc\b|server status|server up|server down|are the servers|how are the servers|network status|network up|servers? online|servers? down)/.test(normalized)) {
+    // Minecraft server status - ALWAYS use tool for server queries
+    if (/(minecraft|\\bmc\\b|server status|servers? (up|down|online|offline)|are the servers|how are the servers|network status|server ips?|what's the ip|minecraft servers|witchyworlds)/.test(normalized)) {
       return {
         actions: [{ type: 'tool', toolName: 'minecraft_status', toolParams: {} }],
-        reasoning: 'Minecraft server status query detected',
+        reasoning: 'Minecraft server status query detected - must use tool',
         metadata: undefined,
         isFallback: false,
       };
@@ -148,22 +148,24 @@ IF UNSURE: return {"actions":[{"type":"chat"}],"reasoning":"Planner fallback"}
 Available tools:
 ${toolList}
 
-Detection rules - USE TOOLS AGGRESSIVELY:
-- Math expressions (e.g., "14*3+9", "what's 5+5") → use "calculate" tool
-- Unit conversions (e.g., "6ft to cm", "convert 50kg to pounds") → use "convert_units" tool
-- Currency conversions (e.g., "£25 in USD", "$100 to EUR") → use "convert_currency" tool
-- GitHub queries (e.g., "summarize owner/repo", "what does this repo do") → use "github_repo" tool with action="readme"
-- Time queries (e.g., "what time is it", "current time") → use "get_time" tool
-- Web searches ("search for", "find", "look up") → use "searxng_search" tool
-- URLs/links in message → use "fetch_url" tool
-- Minecraft server status/network queries (e.g., "server status", "are servers up", "how are the servers", "mc network status", "network status") → use "minecraft_status" tool
+Detection rules - USE TOOLS AGGRESSIVELY - NEVER ANSWER WITHOUT TOOLS:
+- Math expressions (e.g., "14*3+9", "what's 5+5") → MUST use "calculate" tool
+- Unit conversions (e.g., "6ft to cm", "convert 50kg to pounds") → MUST use "convert_units" tool
+- Currency conversions (e.g., "£25 in USD", "$100 to EUR") → MUST use "convert_currency" tool
+- GitHub queries (e.g., "summarize owner/repo", "what does this repo do") → MUST use "github_repo" tool with action="readme"
+- Time queries (ANY time question: "what time", "current time", "time is it", "show time") → MUST use "get_time" tool - NEVER answer without tool
+- Web searches ("search for", "find", "look up") → MUST use "searxng_search" tool
+- URLs/links in message → MUST use "fetch_url" tool
+- Minecraft server queries (ANY of: "server status", "servers up/down/online", "mc network", "network status", "server ips", "minecraft servers", "witchyworlds") → MUST use "minecraft_status" tool
 - Image requests (e.g., "draw", "generate image", "create a picture") → use "image" type
 - General conversation that doesn't fit any tool → use "chat" type
 
-Critical notes:
+CRITICAL RULES:
+- Time queries: NEVER respond without calling get_time tool first
+- Minecraft queries: NEVER respond without calling minecraft_status tool first
 - GitHub repo summaries require action="readme" parameter
-- For minecraft_status: don't specify server param if asking about default servers
-- PREFER using tools for deterministic queries - only use chat if truly conversational
+- For minecraft_status: don't specify server param if asking about default/network servers
+- ALWAYS prefer tools over chat for deterministic tasks
 
 Respond with ONLY a JSON object in this format:
 

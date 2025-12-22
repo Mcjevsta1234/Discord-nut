@@ -31,12 +31,12 @@ export class MinecraftStatusTool implements MCPTool {
 
   definition: MCPToolDefinition = {
     name: 'minecraft_status',
-    description: 'Check Minecraft server status. If no server is specified, checks default WitchyWorlds network servers. Use for queries like "how are the servers", "server status", "are servers up".',
+    description: 'Check Minecraft server status with IPs, player counts, and online status. If no server specified, checks WitchyWorlds network (atm10, sb4, tts10, valley). Use for: "server status", "server ips", "mc network", "servers online", "how are servers".',
     parameters: [
       {
         name: 'server',
         type: 'string',
-        description: 'Optional server hostname or IP to check. If not provided, checks all default servers.',
+        description: 'Optional server hostname or IP to check. If not provided, checks all default WitchyWorlds servers.',
         required: false,
       },
     ],
