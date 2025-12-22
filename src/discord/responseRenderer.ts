@@ -557,6 +557,11 @@ export class ResponseRenderer {
 
   /**
    * Extract code blocks or HTML from response for file attachment
+   * STRICT RULES:
+   * - Tiny snippets (≤15 lines AND ≤300 chars) may stay inline if illustrative only
+   * - Complete programs/files MUST be attached
+   * - Full HTML/JS/CSS always attached
+   * - Correct file extensions enforced
    * Returns: { content: cleaned text, attachments: file data }
    */
   static extractCodeAndHtml(responseContent: string): {
@@ -567,24 +572,29 @@ export class ResponseRenderer {
     let cleanedContent = responseContent;
 
     // Extract code blocks (```language\ncode\n```)
-    const codeBlockRegex = /```([a-z]*)?\n([\s\S]*?)```/gi;
+    const codeBlockRegex = /```([a-z0-9]*)?\n([\s\S]*?)```/gi;
     let match;
     let blockIndex = 0;
 
     while ((match = codeBlockRegex.exec(responseContent)) !== null) {
-      const language = match[1] || 'txt';
+      const language = match[1] || '';
       const code = match[2].trim();
+      const lineCount = code.split('\n').length;
+      const charCount = code.length;
       
-      // Only create file if code block is substantial (> 100 chars or > 5 lines)
-      if (code.length > 100 || code.split('\n').length > 5) {
+      // HARD RULE: Attach if > 15 lines OR > 300 chars OR is a complete program
+      const exceedsTinySnippetLimit = lineCount > 15 || charCount > 300;
+      const isCompleteProgram = this.looksLikeCompleteCode(code, language);
+      
+      if (exceedsTinySnippetLimit || isCompleteProgram) {
         blockIndex++;
-        const extension = this.getFileExtension(language);
-        const filename = `code-${blockIndex}.${extension}`;
+        const extension = this.getFileExtension(language, code);
+        const filename = this.generateFilename(language, blockIndex, extension);
         
         attachments.push({
           content: code,
           filename,
-          language,
+          language: language || this.detectLanguage(code),
         });
         
         // Replace with file reference
@@ -595,7 +605,7 @@ export class ResponseRenderer {
       }
     }
 
-    // Extract HTML blocks (large HTML content)
+    // Extract HTML blocks (ALWAYS attach complete HTML files)
     const htmlRegex = /<(!DOCTYPE html|html)[\s\S]*?<\/html>/gi;
     let htmlMatch;
     let htmlIndex = 0;
@@ -603,22 +613,21 @@ export class ResponseRenderer {
     while ((htmlMatch = htmlRegex.exec(responseContent)) !== null) {
       const html = htmlMatch[0].trim();
       
-      if (html.length > 200) {
-        htmlIndex++;
-        const filename = `output-${htmlIndex}.html`;
-        
-        attachments.push({
-          content: html,
-          filename,
-          language: 'html',
-        });
-        
-        // Replace with file reference
-        cleanedContent = cleanedContent.replace(
-          html,
-          `📎 **HTML attached:** \`${filename}\``
-        );
-      }
+      // ALWAYS attach HTML files (no inline HTML allowed)
+      htmlIndex++;
+      const filename = htmlIndex === 1 ? 'index.html' : `page-${htmlIndex}.html`;
+      
+      attachments.push({
+        content: html,
+        filename,
+        language: 'html',
+      });
+      
+      // Replace with file reference
+      cleanedContent = cleanedContent.replace(
+        html,
+        `📎 **HTML attached:** \`${filename}\``
+      );
     }
 
     return {
@@ -628,25 +637,111 @@ export class ResponseRenderer {
   }
 
   /**
-   * Get file extension for a language
+   * Detect if code looks like a complete program vs a tiny snippet
    */
-  private static getFileExtension(language: string): string {
+  private static looksLikeCompleteCode(code: string, language: string): boolean {
+    const normalized = code.toLowerCase();
+    
+    // HTML/XML documents are always complete
+    if (/<!doctype|<html|<\?xml/.test(normalized)) {
+      return true;
+    }
+    
+    // Multiple function/class definitions = complete
+    const functionCount = (code.match(/\b(function|def|func|fn|class|interface|struct)\s+\w+/g) || []).length;
+    if (functionCount >= 2) {
+      return true;
+    }
+    
+    // Import/require statements = likely complete module
+    if (/\b(import|require|from\s+['"]|use\s+|#include|package)/.test(normalized)) {
+      return true;
+    }
+    
+    // Main entry points = complete program
+    if (/\b(if\s+__name__\s*==|public\s+static\s+void\s+main|func\s+main\s*\(|def\s+main\s*\()/.test(normalized)) {
+      return true;
+    }
+    
+    // Full event listeners or lifecycle hooks = complete
+    if (/(addEventListener|document\.ready|componentDidMount|useEffect|ngOnInit)/.test(code)) {
+      return true;
+    }
+    
+    // Export statements = module file
+    if (/\b(export\s+(default|const|function|class)|module\.exports)/.test(code)) {
+      return true;
+    }
+    
+    return false;
+  }
+
+  /**
+   * Generate appropriate filename based on language and content
+   */
+  private static generateFilename(language: string, index: number, extension: string): string {
+    // Single file defaults
+    if (index === 1) {
+      if (language === 'html' || extension === 'html') return 'index.html';
+      if (language === 'javascript' || language === 'js') return 'script.js';
+      if (language === 'typescript' || language === 'ts') return 'main.ts';
+      if (language === 'python' || language === 'py') return 'main.py';
+      if (language === 'css') return 'styles.css';
+      if (language === 'json') return 'config.json';
+    }
+    
+    // Multi-file fallback
+    return `code-${index}.${extension}`;
+  }
+
+  /**
+   * Detect language from code content when not specified
+   */
+  private static detectLanguage(code: string): string {
+    if (/<\?php/.test(code)) return 'php';
+    if (/<(!DOCTYPE|html|script|style)/.test(code)) return 'html';
+    if (/\{[\s\S]*:[\s\S]*\}/.test(code) && /"\w+"\s*:/.test(code)) return 'json';
+    if (/(const|let|var|function|=>|console\.)/.test(code)) return 'javascript';
+    if (/(def\s+\w+|import\s+\w+|print\()/.test(code)) return 'python';
+    if (/(package|func\s+\w+|import\s+")/.test(code)) return 'go';
+    return 'txt';
+  }
+
+  /**
+   * Get file extension for a language
+   * NEVER returns .txt for structured code - always uses proper extension
+   */
+  private static getFileExtension(language: string, code?: string): string {
+    const normalized = language.toLowerCase().trim();
+    
     const extensions: Record<string, string> = {
       javascript: 'js',
+      js: 'js',
       typescript: 'ts',
+      ts: 'ts',
       python: 'py',
+      py: 'py',
       java: 'java',
       cpp: 'cpp',
+      'c++': 'cpp',
       c: 'c',
       csharp: 'cs',
+      'c#': 'cs',
+      cs: 'cs',
       go: 'go',
+      golang: 'go',
       rust: 'rs',
       php: 'php',
       ruby: 'rb',
+      rb: 'rb',
       swift: 'swift',
       kotlin: 'kt',
+      kt: 'kt',
       html: 'html',
+      htm: 'html',
       css: 'css',
+      scss: 'scss',
+      sass: 'sass',
       json: 'json',
       xml: 'xml',
       yaml: 'yaml',
@@ -654,11 +749,34 @@ export class ResponseRenderer {
       sql: 'sql',
       sh: 'sh',
       bash: 'sh',
+      shell: 'sh',
       markdown: 'md',
       md: 'md',
+      jsx: 'jsx',
+      tsx: 'tsx',
+      vue: 'vue',
+      svelte: 'svelte',
     };
     
-    return extensions[language.toLowerCase()] || 'txt';
+    // Try language first
+    if (extensions[normalized]) {
+      return extensions[normalized];
+    }
+    
+    // If no language specified but have code, detect from content
+    if (code) {
+      const detected = this.detectLanguage(code);
+      if (detected !== 'txt' && extensions[detected]) {
+        return extensions[detected];
+      }
+    }
+    
+    // Default: use language as-is if it looks like an extension, otherwise .txt
+    if (normalized.length <= 5 && /^[a-z0-9]+$/.test(normalized)) {
+      return normalized;
+    }
+    
+    return 'txt';
   }
 
   /**
