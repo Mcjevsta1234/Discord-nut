@@ -60,6 +60,8 @@ export interface AggregatedLLMMetadata {
   
   // Aggregated totals
   totalTokens: number;
+  totalPromptTokens: number;
+  totalCompletionTokens: number;
   totalLatencyMs: number;
   totalCost: number;
   
@@ -127,6 +129,16 @@ export function aggregateLLMMetadata(
     0
   );
   
+  const totalPromptTokens = allCalls.reduce(
+    (sum, call) => sum + (call.usage?.promptTokens || 0),
+    0
+  );
+  
+  const totalCompletionTokens = allCalls.reduce(
+    (sum, call) => sum + (call.usage?.completionTokens || 0),
+    0
+  );
+  
   const totalLatencyMs = allCalls.reduce(
     (sum, call) => sum + (call.latencyMs || 0),
     0
@@ -144,6 +156,8 @@ export function aggregateLLMMetadata(
     executionCalls: executionCalls || [],
     responseCall,
     totalTokens,
+    totalPromptTokens,
+    totalCompletionTokens,
     totalLatencyMs,
     totalCost,
     totalCalls: allCalls.length,

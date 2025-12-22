@@ -29,6 +29,18 @@ export class Planner {
     this.aiService = aiService;
   }
 
+  /**
+   * Create synthetic plan for INSTANT tier (no LLM call)
+   * Saves tokens by generating plan deterministically
+   */
+  createSyntheticPlanForInstant(): ActionPlan {
+    return {
+      actions: [{ type: 'chat' }],
+      reasoning: 'Conversational response', // Synthetic, not LLM-generated
+      metadata: undefined, // No LLM call = no metadata
+    };
+  }
+
   async planActions(
     userMessage: string,
     conversationContext: Message[],

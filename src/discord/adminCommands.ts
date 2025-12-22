@@ -9,6 +9,7 @@ import {
 import { config } from '../config';
 import { PromptManager } from './promptManager';
 import { getAllPersonaIds, getPersona } from '../personas.config';
+import { setDebugMode, parseDebugMode, getDebugMode, getDebugModeDescription } from './debugMode';
 
 type PromptAction = 'replace' | 'append' | 'clear';
 
@@ -60,6 +61,22 @@ export class AdminCommandHandler {
         )
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
         .toJSON(),
+      new SlashCommandBuilder()
+        .setName('debug')
+        .setDescription('Set debug information level for bot responses')
+        .addStringOption((option) =>
+          option
+            .setName('mode')
+            .setDescription('Debug mode level')
+            .setRequired(true)
+            .addChoices(
+              { name: 'Full - All information (routing, tokens, pricing, timing)', value: 'full' },
+              { name: 'Simple - Plan, Tools, Performance only', value: 'simple' },
+              { name: 'Off - No system embed, chat only', value: 'off' }
+            )
+        )
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+        .toJSON(),
     ];
 
     await this.client.application?.commands.set(commands);
@@ -82,6 +99,11 @@ export class AdminCommandHandler {
 
     if (interaction.commandName === 'set-chat-model') {
       await this.handleChatModel(interaction);
+      return;
+    }
+
+    if (interaction.commandName === 'debug') {
+      await this.handleDebugMode(interaction);
       return;
     }
   }
@@ -127,6 +149,36 @@ export class AdminCommandHandler {
   ): Promise<void> {
     await interaction.reply({
       content: `⚠️ **This command is deprecated.**\n\nModel selection is now **automatic** via the 4-tier routing system:\n• **INSTANT** - Fast responses for simple queries\n• **SMART** - General-purpose reasoning\n• **THINKING** - Deep analysis\n• **CODING** - Code generation\n\nThe system automatically selects the best model for each query.`,
+      ephemeral: true,
+    });
+  }
+
+  /**
+   * Handle /debug command - set debug information level
+   */
+  private async handleDebugMode(
+    interaction: ChatInputCommandInteraction
+  ): Promise<void> {
+    const modeInput = interaction.options.getString('mode', true);
+    const mode = parseDebugMode(modeInput);
+
+    if (!mode) {
+      await interaction.reply({
+        content: `Invalid debug mode. Valid options: full, simple, off`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Set for guild (or channel if DM)
+    const guildId = interaction.guildId;
+    const channelId = interaction.channelId;
+    
+    setDebugMode(mode, guildId || undefined, channelId);
+
+    const description = getDebugModeDescription(mode);
+    await interaction.reply({
+      content: `🐛 **Debug mode set to: ${mode.toUpperCase()}**\n\n${description}\n\nThis setting applies to ${guildId ? 'this server' : 'this channel'}.`,
       ephemeral: true,
     });
   }

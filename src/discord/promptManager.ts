@@ -167,6 +167,50 @@ export class PromptManager {
     };
   }
 
+  /**
+   * Create minimal prompt for INSTANT tier (token optimization)
+   * Strips out:
+   * - Memory summaries
+   * - Example messages
+   * - Extra system prompts
+   * Includes only:
+   * - Minimal system prompt
+   * - Compressed persona
+   * - Latest user message only
+   */
+  composeMinimalPromptForInstant(
+    channelId: string,
+    latestUserMessage: Message,
+    personaId?: string
+  ): ComposedPrompt {
+    const messages: Message[] = [];
+
+    // Minimal system prompt
+    messages.push({
+      role: 'system',
+      content: 'You are a helpful AI assistant. Be concise and friendly.',
+    });
+
+    // Compressed persona (if available)
+    const activePersonaId = personaId || this.getChannelPersona(channelId);
+    const persona = getPersona(activePersonaId);
+    
+    if (persona) {
+      // Use only the personality prompt (shorter)
+      messages.push({
+        role: 'system',
+        content: persona.personalityPrompt,
+      });
+    }
+
+    // Only the latest user message
+    messages.push(latestUserMessage);
+
+    return {
+      messages,
+    };
+  }
+
   private getOverrides(channelId: string): ChannelPromptOverrides {
     if (!this.overrides.has(channelId)) {
       this.overrides.set(channelId, {});

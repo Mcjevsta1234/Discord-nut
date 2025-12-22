@@ -6,6 +6,7 @@
  * - Tool usage is explicitly shown (or explicitly stated as not needed)
  * - Model selection and routing decisions are documented
  * - System information is separated from conversational responses
+ * - Debug mode controls what information is displayed
  */
 
 import { EmbedBuilder, Message as DiscordMessage, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
@@ -13,6 +14,8 @@ import { PlannedAction, ActionPlan } from '../ai/planner';
 import { ActionResult, ExecutionResult } from '../ai/actionExecutor';
 import { AggregatedLLMMetadata, LLMResponseMetadata } from '../ai/llmMetadata';
 import { RoutingDecision } from '../ai/modelTiers';
+import { getTierConfig } from '../config/routing';
+import { DebugMode, DebugSection, shouldShowSection, getDebugMode } from './debugMode';
 
 /**
  * Metadata about the response generation process
@@ -94,8 +97,16 @@ export class ResponseRenderer {
   /**
    * Build the system/reasoning embed (Embed 1)
    * This shows all the "behind the scenes" information
+   * Respects debug mode settings
    */
-  static buildSystemEmbed(metadata: ResponseMetadata): EmbedBuilder {
+  static buildSystemEmbed(metadata: ResponseMetadata, guildId?: string, channelId?: string): EmbedBuilder {
+    const debugMode = getDebugMode(guildId, channelId);
+    
+    // If debug mode is OFF, return null (no embed)
+    if (debugMode === DebugMode.OFF) {
+      return new EmbedBuilder(); // Return empty embed (will be filtered out)
+    }
+
     const embed = new EmbedBuilder()
       .setColor(0x5865f2) // Discord blurple for system info
       .setTitle('🧠 System Information')
@@ -104,115 +115,142 @@ export class ResponseRenderer {
     // Build description with all sections
     const sections: string[] = [];
 
-    // 1. PLAN SECTION
-    sections.push('**📋 Plan**');
-    if (metadata.plannedActions.length === 0) {
-      sections.push('• Direct response (no actions needed)');
-    } else {
-      const planBullets = this.formatPlanBullets(metadata.plannedActions);
-      sections.push(planBullets.join('\n'));
+    // 1. PLAN SECTION (always shown in SIMPLE and FULL)
+    if (shouldShowSection(DebugSection.PLAN, debugMode)) {
+      sections.push('**📋 Plan**');
+      if (metadata.plannedActions.length === 0) {
+        sections.push('• Direct response (no actions needed)');
+      } else {
+        const planBullets = this.formatPlanBullets(metadata.plannedActions);
+        sections.push(planBullets.join('\n'));
+      }
     }
 
-    // 2. REASONING SECTION (if available)
-    if (metadata.planReasoning && metadata.planReasoning !== 'Planned actions') {
-      sections.push('\n**🤔 Reasoning**');
-      sections.push(metadata.planReasoning.substring(0, 200));
+    // 2. REASONING SECTION (FULL only)
+    if (shouldShowSection(DebugSection.REASONING, debugMode)) {
+      if (metadata.planReasoning && metadata.planReasoning !== 'Planned actions' && metadata.planReasoning !== 'Conversational response') {
+        sections.push('\n**🤔 Reasoning**');
+        sections.push(metadata.planReasoning.substring(0, 200));
+      }
     }
 
-    // 3. TOOLS SECTION
-    sections.push('\n**🔧 Tools Used**');
-    const toolsUsed = this.extractToolsUsed(metadata);
-    const toolCount = metadata.executionResults?.filter(r => 
-      r.success && metadata.plannedActions[metadata.executionResults!.indexOf(r)]?.type === 'tool'
-    ).length || 0;
-    
-    sections.push(`• Count: ${toolCount}`);
-    if (toolsUsed.length === 0) {
-      sections.push('• No tools were required for this response');
-    } else {
-      sections.push(toolsUsed.join('\n'));
-    }
-
-    // 4. ROUTING & MODEL SECTION (Shows routing decisions)
-    sections.push('\n**🎯 Routing & Model Selection**');
-    
-    if (metadata.routingDecision) {
-      const rd = metadata.routingDecision;
-      sections.push(`• Tier: \`${rd.tier}\``);
-      sections.push(`• Model: \`${this.truncate(rd.modelId, 50)}\``);
-      sections.push(`• Method: ${rd.routingMethod === 'heuristic' ? '⚡ Heuristic' : rd.routingMethod === 'routerModel' ? '🤖 Router LLM' : '🔀 Hybrid'}`);
-      sections.push(`• Reason: ${rd.routingReason}`);
-      sections.push(`• Confidence: ${(rd.confidence * 100).toFixed(0)}%`);
-    } else {
-      // Fallback if no routing decision available
-      sections.push(`• Model: \`${this.truncate(metadata.responseModel, 50)}\``);
-    }
-    
-    if (metadata.personaId) {
-      sections.push(`• Persona: \`${metadata.personaId}\``);
-    }
-
-    // 5. TOKEN USAGE SECTION (NEW - ALWAYS SHOW)
-    sections.push('\n**📊 Token Usage**');
-    if (metadata.llmMetadata) {
-      const llm = metadata.llmMetadata;
+    // 3. TOOLS SECTION (always shown in SIMPLE and FULL)
+    if (shouldShowSection(DebugSection.TOOLS_USED, debugMode)) {
+      sections.push('\n**🔧 Tools Used**');
+      const toolsUsed = this.extractToolsUsed(metadata);
+      const toolCount = metadata.executionResults?.filter(r => 
+        r.success && metadata.plannedActions[metadata.executionResults!.indexOf(r)]?.type === 'tool'
+      ).length || 0;
       
-      // Show aggregated stats
-      if (llm.totalTokens > 0) {
-        sections.push(`• Total Tokens: ${llm.totalTokens.toLocaleString()}`);
+      sections.push(`• Count: ${toolCount}`);
+      if (toolsUsed.length === 0) {
+        sections.push('• No tools were required for this response');
+      } else {
+        sections.push(toolsUsed.join('\n'));
+      }
+    }
+
+    // 4. ROUTING & MODEL SECTION (FULL only) - with cost-based pricing
+    if (shouldShowSection(DebugSection.ROUTING, debugMode)) {
+      sections.push('\n**🎯 Model & Routing**');
+      
+      if (metadata.routingDecision) {
+        const rd = metadata.routingDecision;
+        sections.push(`• Model: \`${this.truncate(rd.modelId, 50)}\``);
+        sections.push(`• Method: ${rd.routingMethod === 'heuristic' ? '⚡ Heuristic' : rd.routingMethod === 'routerModel' ? '🤖 Router LLM' : '🔀 Hybrid'}`);
+        sections.push(`• Reason: ${rd.routingReason}`);
+        sections.push(`• Confidence: ${(rd.confidence * 100).toFixed(0)}%`);
+      } else {
+        // Fallback if no routing decision available
+        sections.push(`• Model: \`${this.truncate(metadata.responseModel, 50)}\``);
+      }
+      
+      if (metadata.personaId) {
+        sections.push(`• Persona: \`${metadata.personaId}\``);
+      }
+    }
+
+    // 5. PRICING SECTION (FULL only) - cost-based display
+    if (shouldShowSection(DebugSection.PRICING, debugMode) && metadata.routingDecision) {
+      sections.push('\n**💰 Pricing**');
+      const tierConfig = getTierConfig(metadata.routingDecision.tier);
+      
+      if (tierConfig.inputPricePerMillionTokens === 0 && tierConfig.outputPricePerMillionTokens === 0) {
+        sections.push(`• Input: $0.00 / 1M tokens`);
+        sections.push(`• Output: $0.00 / 1M tokens`);
+        sections.push(`• This message: **$0.00** (free tier)`);
+      } else {
+        sections.push(`• Input: $${tierConfig.inputPricePerMillionTokens.toFixed(2)} / 1M tokens`);
+        sections.push(`• Output: $${tierConfig.outputPricePerMillionTokens.toFixed(2)} / 1M tokens`);
         
-        // Show breakdown by phase if multiple calls
-        if (llm.totalCalls > 1) {
-          if (llm.planningCall?.usage) {
-            sections.push(`  - Planning: ${llm.planningCall.usage.totalTokens || 0} tokens`);
+        // Calculate actual cost for this message
+        if (metadata.llmMetadata && metadata.llmMetadata.totalTokens > 0) {
+          const inputCost = (metadata.llmMetadata.totalPromptTokens / 1000000) * tierConfig.inputPricePerMillionTokens;
+          const outputCost = (metadata.llmMetadata.totalCompletionTokens / 1000000) * tierConfig.outputPricePerMillionTokens;
+          const totalCost = inputCost + outputCost;
+          sections.push(`• This message: **$${totalCost.toFixed(4)}**`);
+        }
+      }
+    }
+
+    // 6. TOKEN USAGE SECTION (FULL only)
+    if (shouldShowSection(DebugSection.TOKEN_USAGE, debugMode)) {
+      sections.push('\n**📊 Token Usage**');
+      if (metadata.llmMetadata) {
+        const llm = metadata.llmMetadata;
+        
+        // Show aggregated stats
+        if (llm.totalTokens > 0) {
+          sections.push(`• Total Tokens: ${llm.totalTokens.toLocaleString()}`);
+          
+          // Show breakdown by phase if multiple calls
+          if (llm.totalCalls > 1) {
+            if (llm.planningCall?.usage) {
+              sections.push(`  - Planning: ${llm.planningCall.usage.totalTokens || 0} tokens`);
+            }
+            if (llm.responseCall?.usage) {
+              sections.push(`  - Response: ${llm.responseCall.usage.totalTokens || 0} tokens`);
+            }
           }
+          
+          // Show prompt/completion breakdown for main response
           if (llm.responseCall?.usage) {
-            sections.push(`  - Response: ${llm.responseCall.usage.totalTokens || 0} tokens`);
+            const u = llm.responseCall.usage;
+            sections.push(`• Prompt: ${u.promptTokens || 0} | Completion: ${u.completionTokens || 0}`);
           }
-        }
-        
-        // Show prompt/completion breakdown for main response
-        if (llm.responseCall?.usage) {
-          const u = llm.responseCall.usage;
-          sections.push(`• Prompt: ${u.promptTokens || 0} | Completion: ${u.completionTokens || 0}`);
-        }
-        
-        // Show cost if available
-        if (llm.totalCost > 0) {
-          sections.push(`• Estimated Cost: $${llm.totalCost.toFixed(4)}`);
         } else {
-          sections.push(`• Cost: Free tier`);
+          sections.push('• Token data unavailable from provider');
+        }
+        
+        // Show models used
+        if (llm.modelsUsed.length > 0) {
+          sections.push(`• Models: ${llm.modelsUsed.map(m => `\`${this.truncate(m, 30)}\``).join(', ')}`);
         }
       } else {
-        sections.push('• Token data unavailable from provider');
+        sections.push('• Token usage tracking unavailable');
+        sections.push('• (Provider did not return usage data)');
       }
-      
-      // Show models used
-      if (llm.modelsUsed.length > 0) {
-        sections.push(`• Models: ${llm.modelsUsed.map(m => `\`${this.truncate(m, 30)}\``).join(', ')}`);
-      }
-    } else {
-      sections.push('• Token usage tracking unavailable');
-      sections.push('• (Provider did not return usage data)');
     }
 
-    // 6. PERFORMANCE SECTION
-    sections.push('\n**⚡ Performance**');
-    
-    // Total end-to-end time
-    if (metadata.endTime) {
-      const totalDuration = metadata.endTime - metadata.startTime;
-      sections.push(`• Total Time: ${(totalDuration / 1000).toFixed(2)}s`);
-    }
-    
-    // LLM latency
-    if (metadata.llmMetadata && metadata.llmMetadata.totalLatencyMs > 0) {
-      sections.push(`• LLM Latency: ${(metadata.llmMetadata.totalLatencyMs / 1000).toFixed(2)}s`);
-    }
-    
-    // Execution time (tool calls)
-    if (metadata.executionDuration !== undefined && metadata.executionDuration > 0) {
-      sections.push(`• Tool Execution: ${(metadata.executionDuration / 1000).toFixed(2)}s`);
+    // 7. PERFORMANCE SECTION (always shown in SIMPLE and FULL)
+    if (shouldShowSection(DebugSection.PERFORMANCE, debugMode)) {
+      sections.push('\n**⚡ Performance**');
+      
+      // Total end-to-end time
+      if (metadata.endTime) {
+        const totalDuration = metadata.endTime - metadata.startTime;
+        sections.push(`• Total Time: ${(totalDuration / 1000).toFixed(2)}s`);
+      }
+      
+      // LLM latency
+      if (metadata.llmMetadata && metadata.llmMetadata.totalLatencyMs > 0) {
+        sections.push(`• LLM Latency: ${(metadata.llmMetadata.totalLatencyMs / 1000).toFixed(2)}s`);
+      }
+      
+      // Execution time (tool calls)
+      if (metadata.executionDuration !== undefined && metadata.executionDuration > 0) {
+        sections.push(`• Tool Execution: ${(metadata.executionDuration / 1000).toFixed(2)}s`);
+      }
     }
 
     // Combine all sections
@@ -322,10 +360,12 @@ export class ResponseRenderer {
   static render(
     metadata: ResponseMetadata,
     responseContent: string,
+    guildId?: string,
+    channelId?: string,
     imageData?: { buffer: Buffer; prompt: string; resolution: { width: number; height: number } }
   ): RenderedResponse {
-    // Build system embed with all transparency info
-    const systemEmbed = this.buildSystemEmbed(metadata);
+    // Build system embed with all transparency info (respects debug mode)
+    const systemEmbed = this.buildSystemEmbed(metadata, guildId, channelId);
 
     // Clean up response content
     const cleanedResponse = this.cleanResponseContent(responseContent);
@@ -342,6 +382,7 @@ export class ResponseRenderer {
   /**
    * Send the rendered response to Discord
    * This handles both the system embed and the conversational response
+   * Respects debug mode settings
    */
   static async sendToDiscord(
     message: DiscordMessage,
@@ -349,6 +390,10 @@ export class ResponseRenderer {
     workingMessage?: DiscordMessage
   ): Promise<DiscordMessage | null> {
     try {
+      const guildId = message.guildId || undefined;
+      const channelId = message.channelId;
+      const debugMode = getDebugMode(guildId, channelId);
+
       // Create response embed (Embed 2) for the actual conversational reply
       const responseEmbed = new EmbedBuilder()
         .setColor(0x00ff00) // Green for user-facing response
@@ -356,7 +401,15 @@ export class ResponseRenderer {
         .setDescription(this.truncate(rendered.responseContent, 1900))
         .setTimestamp();
 
-      const embeds = [rendered.systemEmbed, responseEmbed];
+      // Build embeds array based on debug mode
+      const embeds = [];
+      
+      // Only add system embed if debug mode is not OFF and embed has content
+      if (debugMode !== DebugMode.OFF && rendered.systemEmbed.data.description) {
+        embeds.push(rendered.systemEmbed);
+      }
+      
+      embeds.push(responseEmbed);
 
       // If there's a working message, edit it
       if (workingMessage) {

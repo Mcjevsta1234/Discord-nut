@@ -48,6 +48,9 @@ export interface TierConfig {
   provider: string;
   supportsTools: boolean;
   supportsCaching: boolean;
+  // Pricing in USD per 1 million tokens
+  inputPricePerMillionTokens: number;
+  outputPricePerMillionTokens: number;
 }
 
 /**
@@ -151,6 +154,8 @@ export const routingConfig: RoutingConfig = {
       provider: 'xiaomi',
       supportsTools: false, // INSTANT tier for greetings/short chat only
       supportsCaching: false,
+      inputPricePerMillionTokens: 0,
+      outputPricePerMillionTokens: 0,
     },
     
     [ModelTier.SMART]: {
@@ -162,6 +167,8 @@ export const routingConfig: RoutingConfig = {
       provider: 'deepseek',
       supportsTools: true,
       supportsCaching: false,
+      inputPricePerMillionTokens: 0,
+      outputPricePerMillionTokens: 0,
     },
     
     [ModelTier.THINKING]: {
@@ -173,6 +180,8 @@ export const routingConfig: RoutingConfig = {
       provider: 'google',
       supportsTools: true,
       supportsCaching: false,
+      inputPricePerMillionTokens: 0,
+      outputPricePerMillionTokens: 0,
     },
     
     [ModelTier.CODING]: {
@@ -184,6 +193,8 @@ export const routingConfig: RoutingConfig = {
       provider: 'google',
       supportsTools: true,
       supportsCaching: false,
+      inputPricePerMillionTokens: 0,
+      outputPricePerMillionTokens: 0,
     },
   },
 };

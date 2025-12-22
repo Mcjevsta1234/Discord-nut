@@ -3,7 +3,7 @@ import { OpenRouterService, Message } from '../ai/openRouterService';
 import { ImageService } from '../ai/imageService';
 import { MemoryManager } from '../ai/memoryManager';
 import { PromptManager } from './promptManager';
-import { Planner } from '../ai/planner';
+import { Planner, ActionPlan } from '../ai/planner';
 import { ActionExecutor } from '../ai/actionExecutor';
 import { MCPToolResult } from '../mcp';
 import { ResponseRenderer, ResponseMetadata } from './responseRenderer';
@@ -132,14 +132,23 @@ export class MessageHandler {
       );
 
       // PLANNER STEP: Decide what actions to take
+      // For INSTANT tier, use synthetic planning (no LLM call = save tokens)
       const planStartTime = Date.now();
-      const plan = await this.planner.planActionsWithRetry(
-        message.content,
-        composedPrompt.messages,
-        personaId
-      );
-
-      console.log(`Action plan: ${plan.actions.map(a => a.type).join(' → ')}`);
+      let plan: ActionPlan;
+      
+      if (routingDecision.tier === 'INSTANT') {
+        // Synthetic planning for INSTANT tier (no LLM call)
+        plan = this.planner.createSyntheticPlanForInstant();
+        console.log(`Action plan: INSTANT tier (synthetic, no LLM call)`);
+      } else {
+        // LLM-based planning for other tiers
+        plan = await this.planner.planActionsWithRetry(
+          message.content,
+          composedPrompt.messages,
+          personaId
+        );
+        console.log(`Action plan: ${plan.actions.map(a => a.type).join(' → ')}`);
+      }
 
       // Create response metadata for transparency
       const metadata: ResponseMetadata = ResponseRenderer.createMetadata(
@@ -196,10 +205,26 @@ export class MessageHandler {
       }).catch(() => {});
 
       // RESPONDER STEP: Generate final response WITH METADATA
+      // For INSTANT tier, use minimal prompt to save tokens
+      let finalPrompt: Message[];
+      if (routingDecision.tier === 'INSTANT') {
+        // Minimal prompt for INSTANT tier
+        const minimalComposed = this.promptManager.composeMinimalPromptForInstant(
+          channelId,
+          userMessage,
+          personaId
+        );
+        finalPrompt = minimalComposed.messages;
+        console.log(`💰 INSTANT tier: using minimal prompt (${finalPrompt.length} messages)`);
+      } else {
+        // Full prompt for other tiers
+        finalPrompt = composedPrompt.messages;
+      }
+
       const responseResult = await this.generateFinalResponseWithMetadata(
         message.content,
         executionResult,
-        composedPrompt.messages,
+        finalPrompt,
         routingDecision.modelId // Use routed model
       );
 
@@ -249,7 +274,12 @@ export class MessageHandler {
       );
 
       // Render and send complete response with full transparency
-      const rendered = ResponseRenderer.render(updatedMetadata, finalResponse);
+      const rendered = ResponseRenderer.render(
+        updatedMetadata,
+        finalResponse,
+        message.guildId || undefined,
+        channelId
+      );
       const sentMessage = await ResponseRenderer.sendToDiscord(
         message,
         rendered,
@@ -648,6 +678,8 @@ export class MessageHandler {
       const rendered = ResponseRenderer.render(
         metadata,
         `Generated image based on your request.`,
+        message.guildId || undefined,
+        message.channelId,
         { buffer, resolution, prompt }
       );
 
@@ -1056,6 +1088,8 @@ export class MessageHandler {
           const rendered = ResponseRenderer.render(
             updatedMetadata,
             'Regenerated image based on your request.',
+            interaction.guildId || undefined,
+            interaction.channelId,
             { buffer, resolution, prompt }
           );
 
@@ -1098,7 +1132,12 @@ export class MessageHandler {
         );
 
         // Render and send with full transparency
-        const rendered = ResponseRenderer.render(updatedMetadata, finalResponse);
+        const rendered = ResponseRenderer.render(
+          updatedMetadata,
+          finalResponse,
+          interaction.guildId || undefined,
+          interaction.channelId
+        );
 
         // Send both embeds
         const systemEmbed = rendered.systemEmbed;
@@ -1198,6 +1237,8 @@ export class MessageHandler {
           const rendered = ResponseRenderer.render(
             metadata,
             'Generated image based on your request.',
+            interaction.guildId || undefined,
+            interaction.channelId,
             {
               buffer: imageResult.imageBuffer,
               resolution: imageResult.resolution,
