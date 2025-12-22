@@ -178,15 +178,15 @@ export const routingConfig: RoutingConfig = {
     
     [ModelTier.SMART]: {
       tier: ModelTier.SMART,
-      modelId: getEnv('MODEL_SMART', 'deepseek/deepseek-r1-0528:free'),
+      modelId: getEnv('MODEL_SMART', 'deepseek/deepseek-r1-0528'),
       maxPromptTokens: getEnvNumber('MODEL_SMART_MAX_PROMPT', 32000),
       maxOutputTokens: getEnvNumber('MODEL_SMART_MAX_OUTPUT', 8000),
-      costTier: 'free',
+      costTier: 'cheap',
       provider: 'deepseek',
       supportsTools: true,
       supportsCaching: false,
-      inputPricePerMillionTokens: getEnvFloat('MODEL_SMART_INPUT_PRICE', 0),
-      outputPricePerMillionTokens: getEnvFloat('MODEL_SMART_OUTPUT_PRICE', 0),
+      inputPricePerMillionTokens: getEnvFloat('MODEL_SMART_INPUT_PRICE', 0.05),
+      outputPricePerMillionTokens: getEnvFloat('MODEL_SMART_OUTPUT_PRICE', 0.22),
     },
     
     [ModelTier.THINKING]: {
