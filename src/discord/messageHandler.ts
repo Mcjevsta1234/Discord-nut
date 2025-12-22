@@ -628,6 +628,12 @@ export class MessageHandler {
       'image request',
       'generate an image',
       'draw an image',
+      'minecraft',
+      'server status',
+      'server up',
+      'server down',
+      'are the servers',
+      'how are the servers',
     ];
 
     if (toolKeywords.some(keyword => normalized.includes(keyword))) {

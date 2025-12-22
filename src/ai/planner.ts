@@ -63,26 +63,55 @@ IF UNSURE: return {"actions":[{"type":"chat"}],"reasoning":"Planner fallback"}
 Available tools:
 ${toolList}
 
-Detection rules:
-- Math → "calculate"
-- Unit conversion → "convert_units"
-- Currency → "convert_currency"
-- GitHub repo → "github_repo" with action="readme"
-- Time → "get_time"
-- Web search → "searxng_search"
-- URLs → "fetch_url"
-- Image request → "image" type
-- General chat → "chat" type
+Detection rules - USE TOOLS AGGRESSIVELY:
+- Math expressions (e.g., "14*3+9", "what's 5+5") → use "calculate" tool
+- Unit conversions (e.g., "6ft to cm", "convert 50kg to pounds") → use "convert_units" tool
+- Currency conversions (e.g., "£25 in USD", "$100 to EUR") → use "convert_currency" tool
+- GitHub queries (e.g., "summarize owner/repo", "what does this repo do") → use "github_repo" tool with action="readme"
+- Time queries (e.g., "what time is it", "current time") → use "get_time" tool
+- Web searches ("search for", "find", "look up") → use "searxng_search" tool
+- URLs/links in message → use "fetch_url" tool
+- Minecraft server status/network queries (e.g., "server status", "are servers up", "how are the servers") → use "minecraft_status" tool
+- Image requests (e.g., "draw", "generate image", "create a picture") → use "image" type
+- General conversation that doesn't fit any tool → use "chat" type
 
-SCHEMA (STRICT):
+Critical notes:
+- GitHub repo summaries require action="readme" parameter
+- For minecraft_status: don't specify server param if asking about default servers
+- PREFER using tools for deterministic queries - only use chat if truly conversational
+
+Respond with ONLY a JSON object in this format:
+
+For regular chat:
 {
   "actions": [
-    {"type": "tool", "toolName": "name", "toolParams": {}},
-    {"type": "image", "imagePrompt": "exact user words", "imageResolution": {"width": 512, "height": 512}},
     {"type": "chat"}
   ],
-  "reasoning": "short note"
-}`,
+  "reasoning": "brief explanation"
+}
+
+For tool usage:
+{
+  "actions": [
+    {"type": "tool", "toolName": "tool_name", "toolParams": {"param": "value"}}
+  ],
+  "reasoning": "brief explanation"
+}
+
+For image generation (ONLY when user explicitly or clearly requests visual/image creation):
+{
+  "actions": [
+    {"type": "image", "imagePrompt": "user's exact prompt", "imageResolution": {"width": 512, "height": 512}}
+  ],
+  "reasoning": "brief explanation"
+}
+
+Routing rules:
+- ALWAYS prefer tools over chat for deterministic tasks (math, conversions, repo info, server status, time)
+- Use "image" type ONLY when user explicitly asks for image generation, pictures, drawings, or visual content
+- If unclear whether they want an image, use "chat" and ask for clarification
+- Default to "chat" only for general conversation that doesn't fit any tool
+- For imagePrompt: Use the user's EXACT words/prompt without modification`,
       },
       ...conversationContext.slice(-2), // Minimal context
       {
