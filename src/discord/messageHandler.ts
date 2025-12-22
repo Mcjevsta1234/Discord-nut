@@ -63,22 +63,22 @@ export class MessageHandler {
     if (message.system) return false;
 
     const botId = this.client.user?.id;
-    const contentLower = message.content.toLowerCase();
 
-    // Check if bot is mentioned
-    const isMentioned = message.mentions.has(botId || '');
+    // 1. Check if THIS bot is directly mentioned
+    const isBotMentioned = message.mentions.has(botId || '');
 
-    // Check if bot is replied to
-    const isRepliedTo =
+    // 2. Check if THIS bot was replied to
+    const isReplyToBot =
       message.reference?.messageId !== undefined &&
       message.type === 19; // REPLY type
 
-    // Check if any persona name appears in message
-    const containsPersonaName = this.promptManager.detectPersonaFromMessage(
+    // 3. Check for explicit persona mention (hey emma, emma, etc)
+    const detectedPersona = this.promptManager.detectPersonaFromMessage(
       message.content
-    ) !== null;
+    );
 
-    return isMentioned || isRepliedTo || containsPersonaName;
+    // Only respond if: bot mentioned OR replied to OR explicit persona mention
+    return isBotMentioned || isReplyToBot || detectedPersona !== null;
   }
 
   async handleMessage(message: DiscordMessage): Promise<void> {

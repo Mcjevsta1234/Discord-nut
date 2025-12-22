@@ -75,13 +75,20 @@ export class PromptManager {
   }
 
   detectPersonaFromMessage(content: string): string | null {
-    const contentLower = content.toLowerCase();
+    const contentLower = content.toLowerCase().trim();
     const personaIds = getAllPersonaIds();
 
-    // Check for persona names with word boundaries
+    // STRICT detection - only trigger on explicit persona mentions
     for (const personaId of personaIds) {
-      const regex = new RegExp(`\\b${personaId}\\b`, 'i');
-      if (regex.test(contentLower)) {
+      // Pattern 1: "hey emma" or "emma " at the start of message
+      if (contentLower.startsWith(`hey ${personaId}`) || 
+          contentLower.startsWith(`${personaId} `) ||
+          contentLower === personaId) {
+        return personaId;
+      }
+      
+      // Pattern 2: Comma-separated address like "emma, how are you" or "emma,"
+      if (contentLower.startsWith(`${personaId},`)) {
         return personaId;
       }
     }
