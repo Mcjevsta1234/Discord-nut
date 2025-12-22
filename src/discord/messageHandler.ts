@@ -236,6 +236,20 @@ export class MessageHandler {
           undefined
         );
         
+        // Log image generation to disk
+        if (message.guild && message.author.username) {
+          const guildId = message.guild.id;
+          const channelId = message.channel.id;
+          const userId = message.author.id;
+          this.chatLogger.logImageGeneration(
+            executionResult.imageData.buffer,
+            message.author.username,
+            guildId,
+            channelId,
+            userId
+          );
+        }
+        
         await this.sendImageResponseWithRenderer(
           message,
           executionResult,
@@ -1246,6 +1260,20 @@ export class MessageHandler {
         // Handle image separately
         if (executionResult.hasImage && executionResult.imageData) {
           const { buffer, resolution, prompt } = executionResult.imageData;
+          
+          // Log image generation to disk
+          if (interaction.guild && interaction.user.username) {
+            const guildId = interaction.guild.id;
+            const channelId = interaction.channelId;
+            const userId = interaction.user.id;
+            this.chatLogger.logImageGeneration(
+              buffer,
+              interaction.user.username,
+              guildId,
+              channelId,
+              userId
+            );
+          }
           
           if (!this.imageService.isDiscordSafe(buffer.length)) {
             await interaction.message.edit({

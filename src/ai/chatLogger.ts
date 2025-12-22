@@ -64,6 +64,50 @@ export class ChatLogger {
     }
   }
 
+  /**
+   * Save generated image to disk and log reference
+   * @returns The relative path to the saved image
+   */
+  logImageGeneration(
+    buffer: Buffer,
+    username: string,
+    guildId: GuildId,
+    channelId: ChannelId,
+    userId: string
+  ): string {
+    try {
+      // Build paths
+      const logFilePath = this.getFilePath(guildId, channelId, userId);
+      const logDir = path.dirname(logFilePath);
+      const imagesDir = path.join(logDir, 'images');
+
+      // Ensure images directory exists
+      if (!fs.existsSync(imagesDir)) {
+        fs.mkdirSync(imagesDir, { recursive: true });
+      }
+
+      // Generate filename with timestamp
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0].replace(/-/g, '');
+      const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '');
+      const filename = `${username}-${dateStr}-${timeStr}.png`;
+      const fullPath = path.join(imagesDir, filename);
+
+      // Save image to disk
+      fs.writeFileSync(fullPath, buffer);
+
+      // Log reference with relative path
+      const relativePath = `images/${filename}`;
+      this.ensureDir(logFilePath);
+      fs.appendFileSync(logFilePath, `bot: [image generated: ${relativePath}]\n`, 'utf-8');
+
+      return relativePath;
+    } catch (err) {
+      // Swallow logging errors, return empty string
+      return '';
+    }
+  }
+
   private cleanNewlines(text: string): string {
     // Keep plain text readability; collapse CRLFs and trim trailing spaces.
     return (text ?? '')
