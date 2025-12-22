@@ -193,7 +193,7 @@ export class RouterService {
 
   /**
    * Route using a small router LLM (for ambiguous cases)
-   * Uses xiaomi/mimo-v2-flash:free with strict constraints
+   * Uses Gemma 9B with optimized prompt for classification
    */
   private async routeByModel(
     userMessage: string,
@@ -202,30 +202,67 @@ export class RouterService {
   ): Promise<RoutingDecision> {
     const routerPrompt: Message[] = [
       {
-        role: 'system',
-        content: `You are a routing classifier. Analyze the user message and output EXACTLY ONE of these words:
-
-INSTANT  - greetings, small talk, acknowledgements (< 15 words)
-SMART    - general queries, tool usage, normal conversations
-THINKING - complex analysis, detailed explanations, multi-step reasoning
-CODING   - code generation, debugging, refactoring, technical implementation
-
-Output ONLY the tier name. No explanation. No punctuation.`,
-      },
-      {
         role: 'user',
-        content: `Message: "${userMessage.substring(0, 200)}"
+        content: `You are a message classifier. Read the message and classify it into ONE tier.
 
-Flags:
-- Contains code: ${flags.containsCode}
-- Needs tools: ${flags.needsTools}
-- Needs search: ${flags.needsSearch}
-- Explicit depth request: ${flags.explicitDepthRequest}
-- Short query: ${flags.isShortQuery}
+TIERS:
+• INSTANT: Simple greetings, small talk, short questions (under 15 words)
+• SMART: Regular conversations, questions, tool requests, normal queries  
+• THINKING: Complex analysis, detailed explanations, multi-step reasoning
+• CODING: Code writing, debugging, refactoring, technical implementation
 
-Output ONE word:`,
+MESSAGE: "${userMessage.substring(0, 250)}"
+
+CONTEXT:
+- Has code: ${flags.containsCode ? 'yes' : 'no'}
+- Needs tools: ${flags.needsTools ? 'yes' : 'no'}
+- Complex request: ${flags.explicitDepthRequest ? 'yes' : 'no'}
+- Short message: ${flags.isShortQuery ? 'yes' : 'no'}
+
+Respond with ONLY ONE WORD - the tier name. No punctuation, no explanation.
+
+Tier:`,
       },
     ];
+
+    // Try primary router model first
+    let response;
+    let usedFallback = false;
+    
+    try {
+      response = await this.aiService.chatCompletionWithMetadata(
+        routerPrompt,
+        routingConfig.routerModelId,
+        {
+          temperature: 0,
+          max_tokens: 20,
+        }
+      );
+    } catch (primaryError) {
+      console.warn(`⚠️ Primary router (${routingConfig.routerModelId}) failed:`, 
+        primaryError instanceof Error ? primaryError.message : String(primaryError)
+      );
+      
+      // Try fallback router
+      try {
+        console.log(`🔄 Trying fallback router: ${routingConfig.fallbackRouterModelId}`);
+        response = await this.aiService.chatCompletionWithMetadata(
+          routerPrompt,
+          routingConfig.fallbackRouterModelId,
+          {
+            temperature: 0,
+            max_tokens: 20,
+          }
+        );
+        usedFallback = true;
+        console.log('✅ Fallback router succeeded');
+      } catch (fallbackError) {
+        console.error('❌ Fallback router also failed:', 
+          fallbackError instanceof Error ? fallbackError.message : String(fallbackError)
+        );
+        throw fallbackError; // Re-throw to use heuristic fallback
+      }
+    }
 
     try {
       const response = await this.aiService.chatCompletionWithMetadata(
@@ -262,8 +299,8 @@ Output ONE word:`,
         modelId: modelConfig.modelId,
         modelConfig,
         routingMethod: 'routerModel',
-        routingReason: `Router model selected ${tier} based on message analysis`,
-        confidence: 0.85,
+        routingReason: `Router model selected ${tier}${usedFallback ? ' (via fallback)' : ''}`,
+        confidence: usedFallback ? 0.85 : 0.95,
         flags,
       };
     } catch (error) {

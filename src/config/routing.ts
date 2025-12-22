@@ -86,6 +86,7 @@ export interface RetryPolicy {
 export interface RoutingConfig {
   mode: RoutingMode;
   routerModelId: string;
+  fallbackRouterModelId: string; // Used when primary router fails
   confidenceThreshold: number; // 0-1, when to use router model vs heuristics
   retryPolicy: RetryPolicy;
   tiers: Record<ModelTier, TierConfig>;
@@ -149,8 +150,11 @@ export const routingConfig: RoutingConfig = {
   mode: getEnv('ROUTING_MODE', 'hybrid') as RoutingMode,
   
   // Router model used for intelligent routing decisions (should be fast and cheap)
-  // Using Gemini Flash - excellent at following instructions and fast routing decisions
-  routerModelId: getEnv('MODEL_ROUTER', 'google/gemini-2.0-flash-exp:free'),
+  // Using Gemma 9B - fast, efficient, and excellent at classification tasks
+  routerModelId: getEnv('MODEL_ROUTER', 'google/gemma-2-9b-it:free'),
+  
+  // Fallback router if primary fails (rate limits, errors)
+  fallbackRouterModelId: getEnv('MODEL_ROUTER_FALLBACK', 'meta-llama/llama-3.2-3b-instruct:free'),
   
   // Confidence threshold: if heuristic confidence < this, use router model
   confidenceThreshold: getEnvNumber('ROUTING_CONFIDENCE_THRESHOLD', 80) / 100,
