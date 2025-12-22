@@ -41,10 +41,19 @@ export class ProgressTracker {
   private updates: ProgressUpdate[] = [];
   private updateInterval?: NodeJS.Timeout;
   private spinnerIndex = 0;
-  private spinnerFrames = ['⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷'];
+  // Cute pacman eating dots animation 🎮
+  private spinnerFrames = [
+    '🟡 • • •',
+    '• 🟡 • •',
+    '• • 🟡 •',
+    '• • • 🟡',
+    '• • 🟡 •',
+    '• 🟡 • •'
+  ];
   private lastUpdateTime = 0;
-  private minUpdateInterval = 800; // Update every 800ms for smooth animation within Discord limits
+  private minUpdateInterval = 1500; // Discord rate limit: max 5 edits per 5 seconds = 1 per second minimum
   private isClosed = false;
+  private pendingUpdate = false;
 
   constructor(message: DiscordMessage, initialEmbed: EmbedBuilder) {
     this.message = message;
@@ -54,6 +63,7 @@ export class ProgressTracker {
 
   /**
    * Start animated spinner that updates periodically
+   * Uses 1.5s interval to stay well within Discord's rate limits (5 edits per 5 seconds)
    */
   private startAnimatedSpinner(): void {
     this.updateInterval = setInterval(async () => {
@@ -62,20 +72,31 @@ export class ProgressTracker {
         return;
       }
 
+      // Skip if an update is already in progress
+      if (this.pendingUpdate) {
+        return;
+      }
+
       const now = Date.now();
-      if (now - this.lastUpdateTime < this.minUpdateInterval) {
-        return; // Rate limit updates
+      const timeSinceLastUpdate = now - this.lastUpdateTime;
+      
+      // Ensure we respect rate limits strictly
+      if (timeSinceLastUpdate < this.minUpdateInterval) {
+        return;
       }
 
       try {
+        this.pendingUpdate = true;
         this.spinnerIndex = (this.spinnerIndex + 1) % this.spinnerFrames.length;
         await this.updateDisplay();
-        this.lastUpdateTime = now;
+        this.lastUpdateTime = Date.now();
       } catch (error) {
         // Message might have been deleted, stop spinner
         this.stopAnimatedSpinner();
+      } finally {
+        this.pendingUpdate = false;
       }
-    }, 400); // Check every 400ms, rate-limited to 800ms for fluid animation
+    }, 1500); // Check every 1.5 seconds, matching our minimum interval
   }
 
   /**
@@ -777,8 +798,8 @@ export class ResponseRenderer {
   static createProgressTracker(message: DiscordMessage, userQuery: string): ProgressTracker {
     const embed = new EmbedBuilder()
       .setColor(0xffa500)
-      .setTitle('⏳ Processing Your Request')
-      .setDescription(`**Query:** ${this.truncate(userQuery, 200)}\n\n⠋ Initializing...`)
+      .setTitle('🎮 Processing Your Request')
+      .setDescription(`**Query:** ${this.truncate(userQuery, 200)}\n\n🟡 • • • Starting...`)
       .setTimestamp();
     
     return new ProgressTracker(message, embed);
