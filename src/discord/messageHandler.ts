@@ -1,6 +1,5 @@
 import { Message as DiscordMessage, Client, AttachmentBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 import { OpenRouterService, Message } from '../ai/openRouterService';
-import { ImageService } from '../ai/imageService';
 import { MemoryManager } from '../ai/memoryManager';
 import { ContextService } from '../ai/contextService';
 import { FileContextManager } from '../ai/fileContextManager';
@@ -15,6 +14,7 @@ import { RoutingDecision, ModelTier } from '../ai/modelTiers';
 import { getTierConfig } from '../config/routing';
 import { ChatLogger } from '../ai/chatLogger';
 import { CodeImprover } from '../ai/codeImprover';
+import { ProjectRouter, ProjectRoutingDecision } from '../ai/projectRouter';
 
 interface MessageContext {
   userContent: string;
@@ -26,7 +26,6 @@ interface MessageContext {
 export class MessageHandler {
   private client: Client;
   private aiService: OpenRouterService;
-  private imageService: ImageService;
   private memoryManager: MemoryManager;
   private fileContextManager: FileContextManager;
   private promptManager: PromptManager;
@@ -46,7 +45,6 @@ export class MessageHandler {
   ) {
     this.client = client;
     this.aiService = aiService;
-    this.imageService = new ImageService();
     this.memoryManager = memoryManager;
     this.fileContextManager = new FileContextManager();
     this.promptManager = promptManager;
@@ -382,12 +380,15 @@ Current message: ${message.content}`
           await progressTracker.complete();
           progressTracker.close();
           
-          await this.sendImageResponseWithRenderer(
-            message,
-            executionResult,
-            updatedMetadata,
-            progressTracker.getMessage()
-          );
+          // Image generation removed - project router handles coding requests
+          console.log('⚠️ Image generation has been removed. Use coding tier for all projects.');
+          const response = 'Image generation has been removed. For coding projects, just describe what you want and I\'ll create it!';
+          
+          await progressTracker.getMessage()?.edit({
+            content: response,
+            embeds: [],
+            components: []
+          });
           return;
         }
 
@@ -413,13 +414,33 @@ Current message: ${message.content}`
           finalPrompt = [...systemBase, ...fileContext, userMessage];
         }
 
-        // STRICT CODING EXECUTION: Use dedicated coding prompt (NO PERSONA)
+        // CENTRALIZED PROJECT ROUTING: Determine project type for coding requests
         let finalResponse: string;
         let responseCallMetadata: LLMResponseMetadata | undefined;
         
         if (routingDecision.tier === 'CODING' && !hasExecutableActions) {
-          console.log('🧪 CODING tier detected - strict execution mode');
+          console.log('🧪 CODING tier detected - routing to project handler');
           
+          // STEP 1: Route to project type (rule-based, deterministic)
+          const projectDecision = ProjectRouter.route(message.content);
+          console.log('📦 Project Type:', projectDecision.projectType);
+          console.log('📦 Preview Allowed:', projectDecision.previewAllowed);
+          console.log('📦 Requires Build:', projectDecision.requiresBuild);
+          console.log('📦 Matched Keywords:', projectDecision.matchedKeywords.join(', '));
+          
+          // STEP 2: TODO - Prompt Improver (will be added later)
+          // Takes user message + project context → detailed coding prompt
+          
+          // STEP 3: TODO - Project Planner (will be added later)
+          // Creates file structure, dependencies, configuration
+          
+          // STEP 4: TODO - Code Generator (will be added later)
+          // Generates actual code files based on plan
+          
+          // STEP 5: TODO - Deployer (will be added later)
+          // For static_html and node_project with previewAllowed=true
+          
+          // TEMPORARY: Use existing code generation until new pipeline is built
           await progressTracker.addUpdate({
             stage: 'responding',
             message: 'Generating production-ready code...',
@@ -462,9 +483,9 @@ Current message: ${message.content}`
           // Use the single-call metadata as the response metadata
           responseCallMetadata = codeResult.metadata;
           
-          console.log('✅ Strict coding execution complete with persona wrapper');
+          console.log('✅ Project routing complete (using legacy generator temporarily)');
         } else {
-          // Normal response generation for other tiers
+          // Non-CODING tiers: Use standard response generation
           const responseResult = await this.generateFinalResponseWithMetadata(
             message.content,
             executionResult,
@@ -868,7 +889,7 @@ You generated the code. Write a short, friendly message (1-3 sentences).`,
           bullets.push(`• Use ${toolName}`);
         }
       } else if (action.type === 'image') {
-        bullets.push(`• Generate image`);
+        // Image generation removed
       } else if (action.type === 'chat') {
         bullets.push(`• Respond conversationally`);
       }
@@ -959,18 +980,13 @@ You generated the code. Write a short, friendly message (1-3 sentences).`,
         .setDescription(`${planSection}\n\n**Response**\n${response.substring(0, 1800)}`)
         .setTimestamp();
 
-      // Create buttons
+      // Create buttons (image button removed)
       const redoButton = new ButtonBuilder()
         .setCustomId('redo_response')
         .setLabel('🔄 Regenerate')
         .setStyle(ButtonStyle.Secondary);
 
-      const imageButton = new ButtonBuilder()
-        .setCustomId('generate_image')
-        .setLabel('🎨 Generate Image')
-        .setStyle(ButtonStyle.Primary);
-
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(redoButton, imageButton);
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(redoButton);
 
       if (workingMessage) {
         await workingMessage.edit({
@@ -1224,194 +1240,7 @@ Be natural & conversational.`,
     }
   }
 
-  /**
-   * Send image response using the new ResponseRenderer
-   */
-  private async sendImageResponseWithRenderer(
-    message: DiscordMessage,
-    executionResult: any,
-    metadata: ResponseMetadata,
-    workingMessage?: DiscordMessage
-  ): Promise<void> {
-    try {
-      if (!executionResult.imageData) {
-        const errorMsg = 'Image generation was requested but no image was produced.';
-        if (workingMessage) {
-          await workingMessage.edit({ content: errorMsg, embeds: [] });
-        } else {
-          await message.reply(errorMsg);
-        }
-        return;
-      }
-
-      const { buffer, resolution, prompt } = executionResult.imageData;
-
-      // Check Discord size limit
-      if (!this.imageService.isDiscordSafe(buffer.length)) {
-        const sizeError = `⚠️ The generated image is too large for Discord (${Math.round(
-          buffer.length / (1024 * 1024)
-        )}MB). Try requesting a smaller resolution.`;
-        
-        if (workingMessage) {
-          await workingMessage.edit({ content: sizeError, embeds: [] });
-        } else {
-          await message.reply(sizeError);
-        }
-        return;
-      }
-
-      // Create attachment
-      const attachment = new AttachmentBuilder(buffer, {
-        name: 'generated-image.png',
-      });
-
-      // Render response with full transparency
-      const rendered = ResponseRenderer.render(
-        metadata,
-        `Generated image based on your request.`,
-        message.guildId || undefined,
-        message.channelId,
-        { buffer, resolution, prompt }
-      );
-
-      // Send system embed and response
-      const systemEmbed = rendered.systemEmbed;
-      
-      // Create image embed
-      const imageEmbed = new EmbedBuilder()
-        .setColor(0x00ff00)
-        .setTitle('🎨 Generated Image')
-        .setDescription(`**Prompt:** ${prompt}\n**Resolution:** ${resolution.width}×${resolution.height}`)
-        .setImage('attachment://generated-image.png')
-        .setTimestamp();
-
-      if (workingMessage) {
-        await workingMessage.edit({
-          content: null,
-          embeds: [systemEmbed, imageEmbed],
-          files: [attachment],
-          components: rendered.actionButtons ? [rendered.actionButtons] : [],
-        });
-      } else {
-        await message.reply({
-          embeds: [systemEmbed, imageEmbed],
-          files: [attachment],
-          components: rendered.actionButtons ? [rendered.actionButtons] : [],
-        });
-      }
-
-      console.log(`Generated image: ${resolution.width}×${resolution.height}, ${buffer.length} bytes`);
-    } catch (error) {
-      console.error('Error sending image response:', error);
-      const errorMsg = 'I generated an image but encountered an error sending it.';
-      if (workingMessage) {
-        await workingMessage.edit({ content: errorMsg, embeds: [] });
-      } else {
-        await message.reply(errorMsg);
-      }
-    }
-  }
-
-  /**
-   * Send image response with optional text context (DEPRECATED - use sendImageResponseWithRenderer)
-   */
-  private async sendImageResponse(
-    message: DiscordMessage,
-    executionResult: any,
-    personaId?: string,
-    workingMessage?: DiscordMessage
-  ): Promise<void> {
-    try {
-      if (!executionResult.imageData) {
-        const errorMsg = 'Image generation was requested but no image was produced.';
-        if (workingMessage) {
-          await workingMessage.edit({ content: errorMsg, embeds: [] });
-        } else {
-          await message.reply(errorMsg);
-        }
-        return;
-      }
-
-      const { buffer, resolution, prompt } = executionResult.imageData;
-
-      // Check Discord size limit
-      if (!this.imageService.isDiscordSafe(buffer.length)) {
-        const sizeError = `⚠️ The generated image is too large for Discord (${Math.round(
-          buffer.length / (1024 * 1024)
-        )}MB). Try requesting a smaller resolution.`;
-        
-        if (workingMessage) {
-          await workingMessage.edit({ content: sizeError, embeds: [] });
-        } else {
-          await message.reply(sizeError);
-        }
-        return;
-      }
-
-      // Create attachment
-      const attachment = new AttachmentBuilder(buffer, {
-        name: 'generated-image.png',
-      });
-
-      // Build caption with any text results
-      const textResults = executionResult.results
-        .filter((r: any) => r.success && r.content && !r.imageBuffer)
-        .map((r: any) => r.content)
-        .join('\n\n');
-
-      const embed = new EmbedBuilder()
-        .setColor(0x5865f2)
-        .setTitle('🎨 Generated Image')
-        .setDescription(`*${prompt}*\n\nResolution: ${resolution.width}×${resolution.height}`)
-        .setImage('attachment://generated-image.png')
-        .setTimestamp();
-
-      if (textResults) {
-        embed.setDescription(`${textResults}\n\n*${prompt}*\n\nResolution: ${resolution.width}×${resolution.height}`);
-      }
-
-      // Create buttons
-      const redoButton = new ButtonBuilder()
-        .setCustomId('redo_response')
-        .setLabel('🔄 Regenerate')
-        .setStyle(ButtonStyle.Secondary);
-
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(redoButton);
-
-      if (workingMessage) {
-        const sentMessage = await workingMessage.edit({
-          content: null,
-          embeds: [embed],
-          files: [attachment],
-          components: [row],
-        });
-
-        if (personaId) {
-          this.promptManager.trackMessagePersona(sentMessage.id, personaId);
-        }
-      } else {
-        const sentMessage = await message.reply({
-          embeds: [embed],
-          files: [attachment],
-          components: [row],
-        });
-
-        if (personaId) {
-          this.promptManager.trackMessagePersona(sentMessage.id, personaId);
-        }
-      }
-
-      console.log(`Generated image: ${resolution.width}×${resolution.height}, ${buffer.length} bytes`);
-    } catch (error) {
-      console.error('Error sending image response:', error);
-      const errorMsg = 'I generated an image but encountered an error sending it.';
-      if (workingMessage) {
-        await workingMessage.edit({ content: errorMsg, embeds: [] });
-      } else {
-        await message.reply(errorMsg);
-      }
-    }
-  }
+  // Deprecated image methods removed - use ProjectRouter for all coding requests
 
   private async sendResponse(
     message: DiscordMessage,
@@ -1425,7 +1254,7 @@ Be natural & conversational.`,
         response = 'I processed your request.';
       }
 
-      // Create buttons
+      // Create buttons (image button removed)
       const redoButton = new ButtonBuilder()
         .setCustomId('redo_response')
         .setLabel('🔄 Regenerate')
@@ -1436,7 +1265,7 @@ Be natural & conversational.`,
         .setLabel('🎨 Generate Image')
         .setStyle(ButtonStyle.Primary);
 
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(redoButton, imageButton);
+      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(redoButton);
 
       // Check if response should use an embed (for structured content)
       if (this.shouldUseEmbed(response)) {
@@ -1658,66 +1487,12 @@ Be natural & conversational.`,
           execDuration
         );
 
-        // Handle image separately
+        // Handle image separately (image generation removed)
         if (executionResult.hasImage && executionResult.imageData) {
-          const { buffer, resolution, prompt } = executionResult.imageData;
-          
-          // Log image generation to disk - fire-and-forget, non-blocking
-          if (interaction.guild && interaction.user.username) {
-            const userId = interaction.user.id;
-            const username = interaction.user.username;
-            const guildName = interaction.guild.name;
-            const channelName = (interaction.channel as any)?.name || 'unknown';
-            setImmediate(() => {
-              try {
-                this.chatLogger.logImageGeneration(
-                  buffer,
-                  prompt,
-                  username,
-                  userId,
-                  guildName,
-                  channelName
-                );
-              } catch (err) {
-                // Logging failures must never affect bot behavior
-              }
-            });
-          }
-          
-          if (!this.imageService.isDiscordSafe(buffer.length)) {
-            await interaction.message.edit({
-              content: '⚠️ Generated image is too large for Discord.',
-              embeds: [],
-              components: [],
-            });
-            return;
-          }
-
-          const attachment = new AttachmentBuilder(buffer, {
-            name: 'generated-image.png',
-          });
-
-          // Use renderer for system embed
-          const rendered = ResponseRenderer.render(
-            updatedMetadata,
-            'Regenerated image based on your request.',
-            interaction.guildId || undefined,
-            interaction.channelId,
-            { buffer, resolution, prompt }
-          );
-
-          const imageEmbed = new EmbedBuilder()
-            .setColor(0x00ff00)
-            .setTitle('🎨 Regenerated Image')
-            .setDescription(`**Prompt:** ${prompt}\n**Resolution:** ${resolution.width}×${resolution.height}`)
-            .setImage('attachment://generated-image.png')
-            .setTimestamp();
-
           await interaction.message.edit({
-            content: null,
-            embeds: [rendered.systemEmbed, imageEmbed],
-            files: [attachment],
-            components: rendered.actionButtons ? [rendered.actionButtons] : [],
+            content: 'Image generation has been removed. For coding projects, just describe what you want and I\'ll create it!',
+            embeds: [],
+            components: [],
           });
           return;
         }
@@ -1769,120 +1544,12 @@ Be natural & conversational.`,
 
         console.log(`Regenerated response for message ${interaction.message.id}`);
       } else if (interaction.customId === 'generate_image') {
-        // Get the stored context
-        const context = this.messageContexts.get(interaction.message.id);
-        
-        if (!context) {
-          await interaction.reply({
-            content: 'Sorry, I cannot generate an image (context expired).',
-            ephemeral: true,
-          });
-          return;
-        }
-
-        // Acknowledge the interaction
-        await interaction.deferUpdate();
-
-        // Extract/create image prompt using AI
-        const workingEmbed = ResponseRenderer.createWorkingEmbed('Generating image...');
-
-        await interaction.message.edit({
-          embeds: [workingEmbed],
-          components: [],
+        // Image generation removed
+        await interaction.reply({
+          content: 'Image generation has been removed. For coding projects, just describe what you want and I\'ll create it!',
+          ephemeral: true,
         });
-
-        try {
-          // Use AI to extract or create an image prompt from the context
-          const promptExtractionPrompt: Message[] = [
-            {
-              role: 'system',
-              content: 'Extract or create a detailed image generation prompt from the user message and conversation. Output ONLY the image prompt, nothing else. Be descriptive and specific.',
-            },
-            {
-              role: 'user',
-              content: context.userContent,
-            },
-          ];
-
-          const imagePrompt = await this.aiService.chatCompletion(
-            promptExtractionPrompt,
-            'meta-llama/llama-3.3-70b-instruct:free'
-          );
-
-          // Update: Generating image
-          await interaction.message.edit({
-            embeds: [ResponseRenderer.updateWorkingEmbed(
-              workingEmbed,
-              'executing',
-              `🎨 Creating: ${imagePrompt.substring(0, 100)}...`
-            )],
-          });
-
-          // Generate image
-          const imageResult = await this.imageService.generateImage({
-            prompt: imagePrompt.trim(),
-            width: 512,
-            height: 512,
-          });
-
-          if (!this.imageService.isDiscordSafe(imageResult.sizeBytes)) {
-            await interaction.message.edit({
-              content: '⚠️ Generated image is too large for Discord.',
-              embeds: [],
-              components: [],
-            });
-            return;
-          }
-
-          const attachment = new AttachmentBuilder(imageResult.imageBuffer, {
-            name: 'generated-image.png',
-          });
-
-          // Create metadata for the image generation
-          const metadata = ResponseRenderer.createMetadata(
-            [{ type: 'image', imagePrompt: imagePrompt.trim() }],
-            'Generated image from button request',
-            'google/gemini-2.0-flash-exp:free',
-            context.personaId
-          );
-          metadata.endTime = Date.now();
-
-          // Render with transparency
-          const rendered = ResponseRenderer.render(
-            metadata,
-            'Generated image based on your request.',
-            interaction.guildId || undefined,
-            interaction.channelId,
-            {
-              buffer: imageResult.imageBuffer,
-              resolution: imageResult.resolution,
-              prompt: imagePrompt.trim(),
-            }
-          );
-
-          const imageEmbed = new EmbedBuilder()
-            .setColor(0x00ff00)
-            .setTitle('🎨 Generated Image')
-            .setDescription(`**Prompt:** ${imagePrompt}\n**Resolution:** ${imageResult.resolution.width}×${imageResult.resolution.height}`)
-            .setImage('attachment://generated-image.png')
-            .setTimestamp();
-
-          await interaction.message.edit({
-            content: null,
-            embeds: [rendered.systemEmbed, imageEmbed],
-            files: [attachment],
-            components: rendered.actionButtons ? [rendered.actionButtons] : [],
-          });
-
-          console.log(`Generated image from button: ${imageResult.resolution.width}×${imageResult.resolution.height}`);
-        } catch (error) {
-          console.error('Error generating image from button:', error);
-          await interaction.message.edit({
-            content: 'Sorry, I encountered an error generating the image.',
-            embeds: [],
-            components: [],
-          });
-        }
+        return;
       }
     } catch (error) {
       console.error('Error handling button interaction:', error);
