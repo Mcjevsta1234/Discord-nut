@@ -459,12 +459,17 @@ export async function runPromptImprover(
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      model
+      model,
+      {
+        provider: {
+          order: ['Cerebras', 'Together'],
+          allow_fallbacks: true
+        }
+      }
     );
     
     rawResponse = result.content;
     
-    // Track token usage from metadata
     if (result.metadata.usage) {
       tokenUsage.promptTokens = result.metadata.usage.promptTokens || 0;
       tokenUsage.completionTokens = result.metadata.usage.completionTokens || 0;

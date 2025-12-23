@@ -62,6 +62,10 @@ export class OpenRouterService {
       temperature?: number;
       max_tokens?: number;
       top_p?: number;
+      provider?: {
+        order?: string[];
+        allow_fallbacks?: boolean;
+      };
     }
   ): Promise<LLMResponse> {
     const requestTimestamp = Date.now();
@@ -76,6 +80,7 @@ export class OpenRouterService {
           ...(options?.temperature !== undefined && { temperature: options.temperature }),
           ...(options?.max_tokens !== undefined && { max_tokens: options.max_tokens }),
           ...(options?.top_p !== undefined && { top_p: options.top_p }),
+          ...(options?.provider && { provider: options.provider }),
         }
       );
 

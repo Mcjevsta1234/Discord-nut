@@ -340,7 +340,13 @@ Generate the complete JSON file bundle now.`;
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      model
+      model,
+      {
+        provider: {
+          order: ['Cerebras', 'Together'],
+          allow_fallbacks: true
+        }
+      }
     );
     
     rawResponse = response.content;
@@ -406,7 +412,13 @@ Return the JSON now:`;
           { role: 'system', content: 'Return only valid JSON. No markdown. No extra text. Generate complete file contents with no placeholders.' },
           { role: 'user', content: fixPrompt },
         ],
-        model
+        model,
+        {
+          provider: {
+            order: ['Cerebras', 'Together'],
+            allow_fallbacks: true
+          }
+        }
       );
       
       rawResponse = response.content;

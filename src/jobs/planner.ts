@@ -114,21 +114,44 @@ For discord_bot projects:
  * Validate plan structure
  */
 function validatePlan(data: any, job: Job): data is Plan {
-  if (!data || typeof data !== 'object') return false;
-  if (typeof data.title !== 'string' || !data.title) return false;
-  if (data.projectType !== job.projectType) return false;
-  if (!['none', 'static', 'node'].includes(data.buildStrategy)) return false;
+  const log = (msg: string) => writeJobLog(job, msg);
+  
+  if (!data || typeof data !== 'object') {
+    log('Validation failed: data is not an object');
+    return false;
+  }
+  if (typeof data.title !== 'string' || !data.title) {
+    log('Validation failed: title is missing or not a string');
+    return false;
+  }
+  if (data.projectType !== job.projectType) {
+    log(`Validation failed: projectType '${data.projectType}' does not match job projectType '${job.projectType}'`);
+    return false;
+  }
+  if (!['none', 'static', 'node'].includes(data.buildStrategy)) {
+    log(`Validation failed: buildStrategy '${data.buildStrategy}' is invalid (must be none/static/node)`);
+    return false;
+  }
   
   // Validate filePlan
-  if (!Array.isArray(data.filePlan) || data.filePlan.length < 1) return false;
+  if (!Array.isArray(data.filePlan) || data.filePlan.length < 1) {
+    log(`Validation failed: filePlan is not an array or empty (length: ${data.filePlan?.length || 0})`);
+    return false;
+  }
   if (!data.filePlan.every((f: any) => 
     typeof f.path === 'string' && 
     typeof f.purpose === 'string' && 
     typeof f.notes === 'string'
-  )) return false;
+  )) {
+    log('Validation failed: filePlan contains invalid entries (must have path, purpose, notes as strings)');
+    return false;
+  }
   
   // Validate steps
-  if (!Array.isArray(data.steps) || data.steps.length < 8 || data.steps.length > 20) return false;
+  if (!Array.isArray(data.steps) || data.steps.length < 8 || data.steps.length > 20) {
+    log(`Validation failed: steps array has ${data.steps?.length || 0} items (need 8-20)`);
+    return false;
+  }
   if (!data.steps.every((s: any) => 
     typeof s.id === 'string' &&
     typeof s.name === 'string' &&
@@ -137,29 +160,59 @@ function validatePlan(data: any, job: Job): data is Plan {
     Array.isArray(s.outputs) &&
     ['low', 'medium', 'high'].includes(s.risk) &&
     Array.isArray(s.validation)
-  )) return false;
+  )) {
+    log('Validation failed: steps contain invalid entries (must have id/name/goal/inputs/outputs/risk/validation)');
+    return false;
+  }
   
   // Validate acceptanceMapping
-  if (!Array.isArray(data.acceptanceMapping)) return false;
-  if (!job.spec) return false;
+  if (!Array.isArray(data.acceptanceMapping)) {
+    log('Validation failed: acceptanceMapping is not an array');
+    return false;
+  }
+  if (!job.spec) {
+    log('Validation failed: job.spec is missing');
+    return false;
+  }
   
   // Check coverage: every checklist item must be mapped
   const mappedItems = new Set(data.acceptanceMapping.map((m: any) => m.checklistItem));
   const allCovered = job.spec.acceptanceChecklist.every(item => mappedItems.has(item));
-  if (!allCovered) return false;
+  if (!allCovered) {
+    log(`Validation failed: not all acceptance checklist items are mapped (${mappedItems.size}/${job.spec.acceptanceChecklist.length})`);
+    return false;
+  }
   
   if (!data.acceptanceMapping.every((m: any) =>
     typeof m.checklistItem === 'string' &&
     Array.isArray(m.coveredBySteps) &&
     m.coveredBySteps.length > 0
-  )) return false;
+  )) {
+    log('Validation failed: acceptanceMapping contains invalid entries');
+    return false;
+  }
   
   // Validate guardrails
-  if (!data.guardrails || typeof data.guardrails !== 'object') return false;
-  if (typeof data.guardrails.noExternalAssets !== 'boolean') return false;
-  if (typeof data.guardrails.singleShotUserFlow !== 'boolean') return false;
-  if (typeof data.guardrails.noUserIteration !== 'boolean') return false;
-  if (typeof data.guardrails.doNotAddFeaturesNotInSpec !== 'boolean') return false;
+  if (!data.guardrails || typeof data.guardrails !== 'object') {
+    log('Validation failed: guardrails is missing or not an object');
+    return false;
+  }
+  if (typeof data.guardrails.noExternalAssets !== 'boolean') {
+    log('Validation failed: guardrails.noExternalAssets must be boolean');
+    return false;
+  }
+  if (typeof data.guardrails.singleShotUserFlow !== 'boolean') {
+    log('Validation failed: guardrails.singleShotUserFlow must be boolean');
+    return false;
+  }
+  if (typeof data.guardrails.noUserIteration !== 'boolean') {
+    log('Validation failed: guardrails.noUserIteration must be boolean');
+    return false;
+  }
+  if (typeof data.guardrails.doNotAddFeaturesNotInSpec !== 'boolean') {
+    log('Validation failed: guardrails.doNotAddFeaturesNotInSpec must be boolean');
+    return false;
+  }
   
   return true;
 }
@@ -249,12 +302,17 @@ Generate the execution plan JSON now.`;
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      model
+      model,
+      {
+        provider: {
+          order: ['Cerebras', 'Together'],
+          allow_fallbacks: true
+        }
+      }
     );
     
     rawResponse = result.content;
     
-    // Track token usage from metadata
     if (result.metadata.usage) {
       tokenUsage.promptTokens = result.metadata.usage.promptTokens || 0;
       tokenUsage.completionTokens = result.metadata.usage.completionTokens || 0;

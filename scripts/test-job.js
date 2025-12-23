@@ -258,6 +258,33 @@ async function runTests() {
           console.log(`     ✓ ${existCount}/${Math.min(5, job.codegenResult.files.length)} verified files exist in output`);
         }
         
+        // Copy generated code to ~/projects folder for review
+        const projectsDir = path.join(require('os').homedir(), 'projects', 'discord-bot-generated');
+        const projectOutputDir = path.join(projectsDir, `${projectType}-${job.jobId}`);
+        
+        if (!fs.existsSync(projectOutputDir)) {
+          fs.mkdirSync(projectOutputDir, { recursive: true });
+        }
+        
+        console.log(`  ✓ Copying generated code to ~/projects for review...`);
+        let copiedToProjects = 0;
+        job.codegenResult.files.forEach(f => {
+          const srcPath = path.join(job.paths.outputDir, f.path);
+          const destPath = path.join(projectOutputDir, f.path);
+          const destDir = path.dirname(destPath);
+          
+          if (!fs.existsSync(destDir)) {
+            fs.mkdirSync(destDir, { recursive: true });
+          }
+          
+          if (fs.existsSync(srcPath)) {
+            fs.copyFileSync(srcPath, destPath);
+            copiedToProjects++;
+          }
+        });
+        
+        console.log(`  ✓ Copied ${copiedToProjects} files to: ${projectOutputDir}`);
+        
         updateJobStatus(job, 'generated');
       } catch (error) {
         console.error(`  ✗ Code generator failed: ${error.message}`);
