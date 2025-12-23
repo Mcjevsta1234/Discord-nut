@@ -25,6 +25,7 @@ import {
   writePlaceholderArtifacts,
   copyWorkspaceToOutput,
   runPromptImprover,
+  runPlanner,
   Job,
 } from '../jobs';
 
@@ -479,7 +480,29 @@ Current message: ${message.content}`
             throw error;
           }
           
-          // STEP 4: Generate artifacts (placeholder for now, LLM later)
+          // STEP 4: Run Planner (LLM Call #2)
+          markStageStart(job, 'planner');
+          await progressTracker.addUpdate({
+            stage: 'responding',
+            message: 'Creating execution plan...',
+            timestamp: Date.now(),
+          });
+          
+          try {
+            await runPlanner(job, this.aiService);
+            markStageEnd(job, 'planner');
+            
+            console.log(`📋 Plan generated: ${job.plan?.steps.length} steps`);
+            console.log(`   Files to generate: ${job.plan?.filePlan.length}`);
+            console.log(`   Build strategy: ${job.plan?.buildStrategy}`);
+          } catch (error) {
+            writeJobLog(job, `Planner failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            updateJobStatus(job, 'failed');
+            markStageEnd(job, 'planner');
+            throw error;
+          }
+          
+          // STEP 5: Generate artifacts (placeholder for now, LLM later)
           markStageStart(job, 'artifact_generation');
           await progressTracker.addUpdate({
             stage: 'responding',
@@ -492,7 +515,7 @@ Current message: ${message.content}`
           updateJobStatus(job, 'generated');
           markStageEnd(job, 'artifact_generation');
           
-          // STEP 5: Copy to output directory
+          // STEP 6: Copy to output directory
           markStageStart(job, 'output_copy');
           const copiedCount = copyWorkspaceToOutput(job);
           writeJobLog(job, `Copied ${copiedCount} files to output directory`);

@@ -27,6 +27,7 @@ const {
   listOutputFiles,
 } = require('../dist/jobs/artifactWriter');
 const { runPromptImprover } = require('../dist/jobs/promptImprover');
+const { runPlanner } = require('../dist/jobs/planner');
 const { OpenRouterService } = require('../dist/ai/openRouterService');
 
 // Check if we should test prompt improver
@@ -113,6 +114,48 @@ async function runTests() {
           }
         } catch (error) {
           console.error(`  ✗ Prompt improver failed: ${error.message}`);
+        }
+
+        // Step 5a: Test planner
+        console.log('\n📍 Step 4a: Run Planner (LLM)');
+        try {
+          const aiService = new OpenRouterService();
+          markStageStart(job, 'planner');
+          await runPlanner(job, aiService);
+          markStageEnd(job, 'planner');
+          
+          if (job.plan) {
+            console.log(`  ✓ Plan generated: "${job.plan.title}"`);
+            console.log(`  ✓ Steps: ${job.plan.steps.length}`);
+            console.log(`  ✓ Files to generate: ${job.plan.filePlan.length}`);
+            console.log(`  ✓ Build strategy: ${job.plan.buildStrategy}`);
+            
+            // Show first 3 steps
+            console.log(`  ✓ First 3 steps:`);
+            job.plan.steps.slice(0, 3).forEach(step => {
+              console.log(`     [${step.id}] ${step.name} (risk: ${step.risk})`);
+            });
+            
+            // Check acceptance coverage
+            const checkedItems = job.plan.acceptanceMapping.length;
+            const totalItems = job.spec.acceptanceChecklist.length;
+            console.log(`  ✓ Acceptance coverage: ${checkedItems}/${totalItems} items`);
+            
+            // Check files exist
+            const fs = require('fs');
+            const path = require('path');
+            const planJsonPath = path.join(job.paths.workspaceDir, 'plan.json');
+            const planTxtPath = path.join(job.paths.workspaceDir, 'plan.txt');
+            
+            if (fs.existsSync(planJsonPath)) {
+              console.log(`  ✓ plan.json saved`);
+            }
+            if (fs.existsSync(planTxtPath)) {
+              console.log(`  ✓ plan.txt saved`);
+            }
+          }
+        } catch (error) {
+          console.error(`  ✗ Planner failed: ${error.message}`);
         }
       }
 
