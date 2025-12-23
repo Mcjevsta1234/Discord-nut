@@ -11,7 +11,8 @@ import { MCPToolResult } from '../mcp';
 import { ResponseRenderer, ResponseMetadata, ProgressTracker } from './responseRenderer';
 import { aggregateLLMMetadata, LLMResponseMetadata } from '../ai/llmMetadata';
 import { RouterService } from '../ai/routerService';
-import { RoutingDecision } from '../ai/modelTiers';
+import { RoutingDecision, ModelTier } from '../ai/modelTiers';
+import { getTierConfig } from '../config/routing';
 import { ChatLogger } from '../ai/chatLogger';
 import { CodeImprover } from '../ai/codeImprover';
 
@@ -438,18 +439,30 @@ Current message: ${message.content}`
           if (!codeResult.finalCode && codeResult.explanation.includes('multiple files')) {
             finalResponse = codeResult.explanation;
           } else {
-            finalResponse = codeResult.finalCode;
+            // Generate persona wrapper message AFTER code generation
+            console.log('👤 Generating persona wrapper message...');
+            const smartModel = getTierConfig(ModelTier.SMART).modelId;
+            const wrapperMessage = await this.generateCodeWrapperMessage(
+              personaId || 'emma', // Fallback to emma if undefined
+              message.content,
+              smartModel // Use SMART tier model for wrapper
+            );
             
-            // Add filename comment if provided
-            if (codeResult.explanation && codeResult.explanation.length > 0) {
-              finalResponse = `${codeResult.explanation}\n\n${codeResult.finalCode}`;
+            // Structure: [Persona Message] + [Code]
+            finalResponse = wrapperMessage;
+            
+            // Add code with filename if provided
+            if (codeResult.explanation && codeResult.explanation.includes('Generated file:')) {
+              finalResponse = `${wrapperMessage}\n\n${codeResult.explanation}\n\n${codeResult.finalCode}`;
+            } else {
+              finalResponse = `${wrapperMessage}\n\n${codeResult.finalCode}`;
             }
           }
           
           // Use the single-call metadata as the response metadata
           responseCallMetadata = codeResult.metadata;
           
-          console.log('✅ Strict coding execution complete');
+          console.log('✅ Strict coding execution complete with persona wrapper');
         } else {
           // Normal response generation for other tiers
           const responseResult = await this.generateFinalResponseWithMetadata(
@@ -595,6 +608,56 @@ Current message: ${message.content}`
       await message.reply(
         'Sorry, I encountered an error processing your message. Please try again later.'
       );
+    }
+  }
+
+  /**
+   * Generate a short persona wrapper message for code responses
+   * Light personality, warmth, confidence - NO self-doubt or refusal language
+   */
+  private async generateCodeWrapperMessage(
+    personaId: string,
+    userRequest: string,
+    model: string
+  ): Promise<string> {
+    const persona = this.promptManager.getPersona(personaId);
+    if (!persona) {
+      return 'Here\'s your code!';
+    }
+
+    const wrapperPrompt: Message[] = [
+      {
+        role: 'system',
+        content: `You just generated production-ready code for the user. Write a SHORT (1-3 sentences) friendly message to accompany it.
+
+Rules:
+- Light personality, warm, confident
+- NO self-doubt ("coding isn't my thing", "hope this works")
+- NO refusal language
+- Max 1 emoji if used
+- Keep it concise and natural
+- Reference what you built
+
+Persona: ${persona.displayName}
+Style: ${persona.personalityPrompt.substring(0, 200)}`,
+      },
+      {
+        role: 'user',
+        content: `User asked: "${userRequest.substring(0, 150)}"
+
+You generated the code. Write a short, friendly message (1-3 sentences).`,
+      },
+    ];
+
+    try {
+      const response = await this.aiService.chatCompletionWithMetadata(wrapperPrompt, model, {
+        temperature: 0.8,
+        max_tokens: 100,
+      });
+      return response.content.trim();
+    } catch (error) {
+      console.warn('⚠️ Failed to generate wrapper message, using fallback');
+      return 'Here\'s your production-ready code! Download the file below.';
     }
   }
 
