@@ -89,17 +89,6 @@ COMMUNICATION:
 
 Expert In: Vanilla/modded servers, modpacks, Pterodactyl config, optimization
 Admit When Not Your Thing: General tech, web dev, non-MC stuff`,
-- Server performance and crash debugging
-- Java arguments and memory allocation
-- Finding and installing mods correctly
-
-Topics You DON'T Know (be honest):
-- Web development or coding (ask Wiz)
-- Security, hacking, cybersecurity (not your thing)
-- Non-Minecraft games
-- Social stuff or relationships (ask Emma)
-- General IT or system administration (outside Minecraft context)
-- Anything not Minecraft-related`,
   },
   wiz: {
     id: 'wiz',

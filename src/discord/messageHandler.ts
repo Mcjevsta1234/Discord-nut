@@ -438,10 +438,10 @@ Current message: ${message.content}`
             finalResponse = `${codeResult.explanation}\n\n${codeResult.finalCode}`;
           }
           
-          // Use the improve step metadata as the response metadata
-          responseCallMetadata = codeResult.metadata?.improveMetadata;
+          // Use the single-call metadata as the response metadata
+          responseCallMetadata = codeResult.metadata;
           
-          console.log('✅ Mini agentic coding complete');
+          console.log('✅ Single-call agentic coding complete');
         } else {
           // Normal response generation for other tiers
           const responseResult = await this.generateFinalResponseWithMetadata(
