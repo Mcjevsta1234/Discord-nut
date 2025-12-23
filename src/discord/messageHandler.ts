@@ -13,6 +13,7 @@ import { aggregateLLMMetadata, LLMResponseMetadata } from '../ai/llmMetadata';
 import { RouterService } from '../ai/routerService';
 import { RoutingDecision } from '../ai/modelTiers';
 import { ChatLogger } from '../ai/chatLogger';
+import { CodeImprover } from '../ai/codeImprover';
 
 interface MessageContext {
   userContent: string;
@@ -34,6 +35,7 @@ export class MessageHandler {
   private router: RouterService;
   private messageContexts: Map<string, MessageContext>;
   private chatLogger: ChatLogger;
+  private codeImprover: CodeImprover;
 
   constructor(
     client: Client,
@@ -53,6 +55,7 @@ export class MessageHandler {
     this.router = new RouterService(aiService);
     this.messageContexts = new Map();
     this.chatLogger = new ChatLogger();
+    this.codeImprover = new CodeImprover(aiService);
   }
 
   async shouldRespond(message: DiscordMessage): Promise<boolean> {
@@ -409,17 +412,50 @@ Current message: ${message.content}`
           finalPrompt = [...systemBase, ...fileContext, userMessage];
         }
 
-        const responseResult = await this.generateFinalResponseWithMetadata(
-          message.content,
-          executionResult,
-          finalPrompt,
-          routingDecision.modelId,
-          routingDecision.tier,
-          personaId
-        );
+        // MINI AGENTIC CODING: Use code improver for CODING tier
+        let finalResponse: string;
+        let responseCallMetadata: LLMResponseMetadata | undefined;
+        
+        if (routingDecision.tier === 'CODING' && !hasExecutableActions) {
+          console.log('🧪 CODING tier detected - using mini agentic flow');
+          
+          await progressTracker.addUpdate({
+            stage: 'responding',
+            message: 'Improving code quality...',
+            timestamp: Date.now(),
+          });
+          
+          const codeResult = await this.codeImprover.improveCode(
+            message.content,
+            finalPrompt,
+            routingDecision.modelId
+          );
+          
+          finalResponse = codeResult.finalCode;
+          
+          // Add explanation if provided
+          if (codeResult.explanation && codeResult.explanation.length > 0) {
+            finalResponse = `${codeResult.explanation}\n\n${codeResult.finalCode}`;
+          }
+          
+          // Use the improve step metadata as the response metadata
+          responseCallMetadata = codeResult.metadata?.improveMetadata;
+          
+          console.log('✅ Mini agentic coding complete');
+        } else {
+          // Normal response generation for other tiers
+          const responseResult = await this.generateFinalResponseWithMetadata(
+            message.content,
+            executionResult,
+            finalPrompt,
+            routingDecision.modelId,
+            routingDecision.tier,
+            personaId
+          );
 
-        let finalResponse = responseResult.content;
-        let responseCallMetadata = responseResult.metadata;
+          finalResponse = responseResult.content;
+          responseCallMetadata = responseResult.metadata;
+        }
 
         // GUARDRAIL: Check if INSTANT tier response is low-confidence or malformed
         if (routingDecision.tier === 'INSTANT' && this.isLowQualityResponse(finalResponse)) {
