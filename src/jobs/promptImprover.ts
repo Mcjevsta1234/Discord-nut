@@ -14,7 +14,7 @@ import { OpenRouterService } from '../ai/openRouterService';
  * Get the model to use for prompt improvement (configurable via env)
  */
 function getPromptImproverModel(): string {
-  return process.env.PROMPT_IMPROVER_MODEL || 'google/gemini-2.0-flash-exp:free';
+  return process.env.PROMPT_IMPROVER_MODEL || 'openai/gpt-oss-120b';
 }
 
 /**
