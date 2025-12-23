@@ -21,47 +21,75 @@ export class CodeImprover {
   }
 
   /**
-   * Single-call agentic coding with internal iteration
+   * Single-call agentic coding with strict execution contract
+   * NO persona, NO chat instructions - pure coding mode
    */
   async improveCode(
     userRequest: string,
     conversationContext: Message[],
     model: string
   ): Promise<CodeImprovement> {
-    console.log('🧪 Single-call agentic coding...');
+    console.log('🧪 Single-call agentic coding (strict mode)...');
 
-    const agenticPrompt: Message[] = [
-      ...conversationContext.slice(-3), // Last 3 messages only
-      {
-        role: 'user',
-        content: userRequest,
-      },
+    // Extract ONLY the user's request - strip all persona/system prompts
+    const userMessages = conversationContext.filter(m => m.role === 'user').slice(-2);
+    const userRequestText = userMessages.map(m => m.content).join('\n') + '\n' + userRequest;
+
+    // Dedicated coding execution prompt - NO PERSONALITY
+    const codingPrompt: Message[] = [
       {
         role: 'system',
-        content: `Expert coder. Internally: plan→code→review→refine. Output: production-ready code.
+        content: `STRICT CODING MODE
 
-Rules:
-- HTML: single file, inline <style>/<script>, mobile viewport
-- Clean code: proper errors, clear names, best practices
-- Brief explanation after code
+You are a professional code generator. NO roleplay, NO emojis, NO conversational tone.
 
-Format:
-\`\`\`lang
-[code]
-\`\`\`
-[2-3 sentence explanation]`,
+EXECUTION CONTRACT:
+1. Generate COMPLETE, PRODUCTION-READY code
+2. Single file output whenever possible
+3. Internally: plan → code → review → improve before responding
+4. Output full file contents - NO truncation, NO placeholders
+5. Include ALL functionality - complete implementation
+
+FILE FORMAT (REQUIRED):
+// FILE: <filename>
+[complete file contents]
+// END FILE
+
+RULES:
+- HTML/CSS/JS: Single .html file, inline <style> in <head>, inline <script> before </body>
+- Mobile-responsive: viewport meta, flexbox/grid, rem units, media queries
+- Best practices: error handling, clear names, comments for complex logic
+- NO explanations outside code comments
+- If task requires multiple files, respond ONLY: "This project requires multiple files. Please use OpenHands."
+
+QUALITY OVER BREVITY: Output the COMPLETE file.`,
+      },
+      {
+        role: 'user',
+        content: userRequestText,
       },
     ];
 
-    const response = await this.aiService.chatCompletionWithMetadata(agenticPrompt, model);
-    const code = this.extractCode(response.content);
-    const explanation = this.extractExplanation(response.content);
+    const response = await this.aiService.chatCompletionWithMetadata(codingPrompt, model);
+    
+    // Check for multi-file response
+    if (response.content.includes('This project requires multiple files')) {
+      console.log('⚠️ Multi-file project detected');
+      return {
+        finalCode: '',
+        explanation: 'This project requires multiple files. Please use OpenHands for complex multi-file projects.',
+        metadata: response.metadata,
+      };
+    }
 
-    console.log('✅ Agentic coding complete');
+    const code = this.extractCode(response.content);
+    const explanation = this.extractFileComment(response.content);
+
+    console.log('✅ Strict coding execution complete');
 
     return {
       finalCode: code,
-      explanation: explanation || 'Code generated with quality checks.',
+      explanation: explanation || 'Production-ready code generated.',
       metadata: response.metadata,
     };
   }
@@ -69,10 +97,19 @@ Format:
 
 
   /**
-   * Extract code from response (handles code blocks)
+   * Extract code from response (handles FILE markers and code blocks)
    */
   private extractCode(response: string): string {
-    // Try to extract from code block first
+    // Try FILE markers first (strict format)
+    const fileMatch = response.match(/\/\/\s*FILE:\s*(.+?)\n([\s\S]*?)\/\/\s*END FILE/);
+    if (fileMatch) {
+      const filename = fileMatch[1].trim();
+      const content = fileMatch[2].trim();
+      console.log(`📄 Extracted file: ${filename}`);
+      return content;
+    }
+
+    // Fallback: Try to extract from code block
     const codeBlockMatch = response.match(/```[\w]*\n([\s\S]*?)```/);
     if (codeBlockMatch) {
       return codeBlockMatch[1].trim();
@@ -95,6 +132,17 @@ Format:
       }
     }
 
+    return '';
+  }
+
+  /**
+   * Extract filename from FILE marker for display
+   */
+  private extractFileComment(response: string): string {
+    const fileMatch = response.match(/\/\/\s*FILE:\s*(.+?)\n/);
+    if (fileMatch) {
+      return `Generated file: ${fileMatch[1].trim()}`;
+    }
     return '';
   }
 }

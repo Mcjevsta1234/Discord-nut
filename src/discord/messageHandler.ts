@@ -412,36 +412,44 @@ Current message: ${message.content}`
           finalPrompt = [...systemBase, ...fileContext, userMessage];
         }
 
-        // MINI AGENTIC CODING: Use code improver for CODING tier
+        // STRICT CODING EXECUTION: Use dedicated coding prompt (NO PERSONA)
         let finalResponse: string;
         let responseCallMetadata: LLMResponseMetadata | undefined;
         
         if (routingDecision.tier === 'CODING' && !hasExecutableActions) {
-          console.log('🧪 CODING tier detected - using mini agentic flow');
+          console.log('🧪 CODING tier detected - strict execution mode');
           
           await progressTracker.addUpdate({
             stage: 'responding',
-            message: 'Improving code quality...',
+            message: 'Generating production-ready code...',
             timestamp: Date.now(),
           });
           
+          // Extract ONLY user messages - NO persona/system prompts for coder
+          const userOnlyContext = conversation.recentMessages.filter((m: Message) => m.role === 'user');
+          
           const codeResult = await this.codeImprover.improveCode(
             message.content,
-            finalPrompt,
+            userOnlyContext,
             routingDecision.modelId
           );
           
-          finalResponse = codeResult.finalCode;
-          
-          // Add explanation if provided
-          if (codeResult.explanation && codeResult.explanation.length > 0) {
-            finalResponse = `${codeResult.explanation}\n\n${codeResult.finalCode}`;
+          // Check for multi-file rejection
+          if (!codeResult.finalCode && codeResult.explanation.includes('multiple files')) {
+            finalResponse = codeResult.explanation;
+          } else {
+            finalResponse = codeResult.finalCode;
+            
+            // Add filename comment if provided
+            if (codeResult.explanation && codeResult.explanation.length > 0) {
+              finalResponse = `${codeResult.explanation}\n\n${codeResult.finalCode}`;
+            }
           }
           
           // Use the single-call metadata as the response metadata
           responseCallMetadata = codeResult.metadata;
           
-          console.log('✅ Single-call agentic coding complete');
+          console.log('✅ Strict coding execution complete');
         } else {
           // Normal response generation for other tiers
           const responseResult = await this.generateFinalResponseWithMetadata(
