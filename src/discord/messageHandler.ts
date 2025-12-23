@@ -24,6 +24,7 @@ import {
   updateJobStatus,
   writePlaceholderArtifacts,
   copyWorkspaceToOutput,
+  runPromptImprover,
   Job,
 } from '../jobs';
 
@@ -455,7 +456,30 @@ Current message: ${message.content}`
           writeJobLog(job, `Project type: ${job.projectType}`);
           writeJobLog(job, `Router decision: ${JSON.stringify(projectDecision)}`);
           
-          // STEP 3: Generate artifacts (placeholder for now, LLM later)
+          // STEP 3: Run Prompt Improver (LLM Call #1)
+          markStageStart(job, 'prompt_improver');
+          await progressTracker.addUpdate({
+            stage: 'responding',
+            message: 'Analyzing requirements and creating detailed specification...',
+            timestamp: Date.now(),
+          });
+          
+          try {
+            await runPromptImprover(job, this.aiService);
+            updateJobStatus(job, 'planned');
+            markStageEnd(job, 'prompt_improver');
+            
+            console.log(`📝 Spec generated: "${job.spec?.title}"`);
+            console.log(`   Primary file: ${job.spec?.output.primaryFile}`);
+            console.log(`   Format: ${job.spec?.output.format}`);
+          } catch (error) {
+            writeJobLog(job, `Prompt improver failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            updateJobStatus(job, 'failed');
+            markStageEnd(job, 'prompt_improver');
+            throw error;
+          }
+          
+          // STEP 4: Generate artifacts (placeholder for now, LLM later)
           markStageStart(job, 'artifact_generation');
           await progressTracker.addUpdate({
             stage: 'responding',
@@ -468,24 +492,21 @@ Current message: ${message.content}`
           updateJobStatus(job, 'generated');
           markStageEnd(job, 'artifact_generation');
           
-          // STEP 4: Copy to output directory
+          // STEP 5: Copy to output directory
           markStageStart(job, 'output_copy');
           const copiedCount = copyWorkspaceToOutput(job);
           writeJobLog(job, `Copied ${copiedCount} files to output directory`);
           markStageEnd(job, 'output_copy');
           
-          // STEP 5: Mark job as done
+          // STEP 6: Mark job as done
           updateJobStatus(job, 'done');
           console.log(`✅ Job ${job.jobId} completed`);
           console.log(`   Workspace: ${job.paths.workspaceDir}`);
           console.log(`   Output: ${job.paths.outputDir}`);
           console.log(`   Logs: ${job.diagnostics.logsPath}`);
           
-          // STEP 6: TODO - Prompt Improver (will be added later)
-          // Takes user message + project context → detailed coding prompt
-          
           // STEP 7: TODO - Project Planner (will be added later)
-          // Creates file structure, dependencies, configuration
+          // Creates file structure, dependencies, configuration (LLM Call #2)
           
           // STEP 8: TODO - Code Generator (will be added later)
           // Generates actual code files based on plan (replaces placeholder logic above)

@@ -151,7 +151,7 @@ export const routingConfig: RoutingConfig = {
   
   // Router model used for intelligent routing decisions (should be fast and cheap)
   // Using GPT-OSS 20B - fast, efficient, and reliable
-  routerModelId: getEnv('MODEL_ROUTER', 'openai/gpt-oss-20b:free'),
+  routerModelId: getEnv('MODEL_ROUTER', 'mistralai/mistral-7b-instruct:free'),
   
   // Fallback router if primary fails (rate limits, errors)
   fallbackRouterModelId: getEnv('MODEL_ROUTER_FALLBACK', 'meta-llama/llama-3.2-3b-instruct:free'),
@@ -170,11 +170,11 @@ export const routingConfig: RoutingConfig = {
   tiers: {
     [ModelTier.INSTANT]: {
       tier: ModelTier.INSTANT,
-      modelId: getEnv('MODEL_INSTANT', 'openai/gpt-oss-20b:free'),
-      maxPromptTokens: getEnvNumber('MODEL_INSTANT_MAX_PROMPT', 4000),
-      maxOutputTokens: getEnvNumber('MODEL_INSTANT_MAX_OUTPUT', 256),
+      modelId: getEnv('MODEL_INSTANT', 'xiaomi/mimo-v2-flash:free'),
+      maxPromptTokens: getEnvNumber('MODEL_INSTANT_MAX_PROMPT', 8192),
+      maxOutputTokens: getEnvNumber('MODEL_INSTANT_MAX_OUTPUT', 2048),
       costTier: 'free',
-      provider: 'openai',
+      provider: 'xiaomi',
       supportsTools: true,
       supportsCaching: false,
       inputPricePerMillionTokens: getEnvFloat('MODEL_INSTANT_INPUT_PRICE', 0),
@@ -185,7 +185,7 @@ export const routingConfig: RoutingConfig = {
       tier: ModelTier.SMART,
       modelId: getEnv('MODEL_SMART', 'openai/gpt-oss-120b:free'),
       maxPromptTokens: getEnvNumber('MODEL_SMART_MAX_PROMPT', 32000),
-      maxOutputTokens: getEnvNumber('MODEL_SMART_MAX_OUTPUT', 8000),
+      maxOutputTokens: getEnvNumber('MODEL_SMART_MAX_OUTPUT', 16000),
       costTier: 'free',
       provider: 'openai',
       supportsTools: true,
@@ -209,15 +209,15 @@ export const routingConfig: RoutingConfig = {
     
     [ModelTier.CODING]: {
       tier: ModelTier.CODING,
-      modelId: getEnv('MODEL_CODING', 'kwaipilot/kat-coder-pro:free'),
-      maxPromptTokens: getEnvNumber('MODEL_CODING_MAX_PROMPT', 32000),
-      maxOutputTokens: getEnvNumber('MODEL_CODING_MAX_OUTPUT', 8000),
+      modelId: getEnv('MODEL_CODING', 'minimax/minimax-m2.1'),
+      maxPromptTokens: getEnvNumber('MODEL_CODING_MAX_PROMPT', 128000),
+      maxOutputTokens: getEnvNumber('MODEL_CODING_MAX_OUTPUT', 128000),
       costTier: 'free',
       provider: 'kwaipilot',
       supportsTools: true,
       supportsCaching: false,
-      inputPricePerMillionTokens: getEnvFloat('MODEL_CODING_INPUT_PRICE', 0),
-      outputPricePerMillionTokens: getEnvFloat('MODEL_CODING_OUTPUT_PRICE', 0),
+      inputPricePerMillionTokens: getEnvFloat('MODEL_CODING_INPUT_PRICE', 0.30),
+      outputPricePerMillionTokens: getEnvFloat('MODEL_CODING_OUTPUT_PRICE', 1.50),
     },
   },
 };
