@@ -61,6 +61,11 @@ export interface JobDiagnostics {
       model: string;
     };
   };
+  specMetrics?: {
+    wordCount: number;
+    bulletCount: number;
+    sectionsFound: string[];
+  };
 }
 
 export interface ImprovedSpec {
@@ -72,6 +77,7 @@ export interface ImprovedSpec {
     primaryFile: string;
     notes?: string;
   };
+  acceptanceChecklist: string[];
 }
 
 export interface Job {
