@@ -1,0 +1,55 @@
+/**
+ * Job Lifecycle Types
+ * 
+ * Defines the core job model for managing coding request lifecycle.
+ * No LLM, Docker, or deployment logic here - just data structures.
+ */
+
+export type ProjectType = 'static_html' | 'node_project' | 'discord_bot';
+
+export type JobStatus =
+  | 'created'
+  | 'planned'
+  | 'generated'
+  | 'validated'
+  | 'packaged'
+  | 'deployed'
+  | 'done'
+  | 'failed';
+
+export interface JobInput {
+  userMessage: string;
+  userId: string;
+  guildId?: string;
+  channelId: string;
+}
+
+export interface JobPaths {
+  workspaceDir: string;   // Per-job temp workspace for generated files
+  outputDir: string;      // Per-job output folder ready for packaging/deploy
+  zipPath?: string;       // Later: path to packaged artifact
+  deployDir?: string;     // Later: deployment directory
+}
+
+export interface JobPreview {
+  enabled: boolean;
+  url?: string;
+  expiresAt?: number;
+}
+
+export interface JobDiagnostics {
+  logsPath: string;                         // Per-job log file path
+  stageTimings: Record<string, number>;     // Milliseconds per stage
+  tokenUsage: { total: number };            // Placeholder for future
+}
+
+export interface Job {
+  jobId: string;                    // Unique, URL-safe identifier
+  createdAt: string;                // ISO timestamp
+  projectType: ProjectType;
+  status: JobStatus;
+  input: JobInput;
+  paths: JobPaths;
+  preview: JobPreview;
+  diagnostics: JobDiagnostics;
+}

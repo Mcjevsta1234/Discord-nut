@@ -15,6 +15,17 @@ import { getTierConfig } from '../config/routing';
 import { ChatLogger } from '../ai/chatLogger';
 import { CodeImprover } from '../ai/codeImprover';
 import { ProjectRouter, ProjectRoutingDecision } from '../ai/projectRouter';
+import {
+  createJob,
+  ensureJobDirs,
+  writeJobLog,
+  markStageStart,
+  markStageEnd,
+  updateJobStatus,
+  writePlaceholderArtifacts,
+  copyWorkspaceToOutput,
+  Job,
+} from '../jobs';
 
 interface MessageContext {
   userContent: string;
@@ -428,19 +439,61 @@ Current message: ${message.content}`
           console.log('📦 Requires Build:', projectDecision.requiresBuild);
           console.log('📦 Matched Keywords:', projectDecision.matchedKeywords.join(', '));
           
-          // STEP 2: TODO - Prompt Improver (will be added later)
+          // STEP 2: Create Job for lifecycle tracking
+          const job = createJob(projectDecision, {
+            userMessage: message.content,
+            userId: message.author.id,
+            guildId: message.guildId || undefined,
+            channelId: message.channelId,
+          });
+          console.log(`📋 Job created: ${job.jobId}`);
+          
+          // Create job directories and initialize logging
+          ensureJobDirs(job);
+          writeJobLog(job, `Coding request from user ${message.author.id}`);
+          writeJobLog(job, `Message: "${message.content}"`);
+          writeJobLog(job, `Project type: ${job.projectType}`);
+          writeJobLog(job, `Router decision: ${JSON.stringify(projectDecision)}`);
+          
+          // STEP 3: Generate artifacts (placeholder for now, LLM later)
+          markStageStart(job, 'artifact_generation');
+          await progressTracker.addUpdate({
+            stage: 'responding',
+            message: 'Setting up project structure...',
+            timestamp: Date.now(),
+          });
+          
+          const artifactFiles = writePlaceholderArtifacts(job);
+          console.log(`📁 Generated ${artifactFiles.length} placeholder files`);
+          updateJobStatus(job, 'generated');
+          markStageEnd(job, 'artifact_generation');
+          
+          // STEP 4: Copy to output directory
+          markStageStart(job, 'output_copy');
+          const copiedCount = copyWorkspaceToOutput(job);
+          writeJobLog(job, `Copied ${copiedCount} files to output directory`);
+          markStageEnd(job, 'output_copy');
+          
+          // STEP 5: Mark job as done
+          updateJobStatus(job, 'done');
+          console.log(`✅ Job ${job.jobId} completed`);
+          console.log(`   Workspace: ${job.paths.workspaceDir}`);
+          console.log(`   Output: ${job.paths.outputDir}`);
+          console.log(`   Logs: ${job.diagnostics.logsPath}`);
+          
+          // STEP 6: TODO - Prompt Improver (will be added later)
           // Takes user message + project context → detailed coding prompt
           
-          // STEP 3: TODO - Project Planner (will be added later)
+          // STEP 7: TODO - Project Planner (will be added later)
           // Creates file structure, dependencies, configuration
           
-          // STEP 4: TODO - Code Generator (will be added later)
-          // Generates actual code files based on plan
+          // STEP 8: TODO - Code Generator (will be added later)
+          // Generates actual code files based on plan (replaces placeholder logic above)
           
-          // STEP 5: TODO - Deployer (will be added later)
+          // STEP 9: TODO - Deployer (will be added later)
           // For static_html and node_project with previewAllowed=true
           
-          // TEMPORARY: Use existing code generation until new pipeline is built
+          // TEMPORARY: Use existing code generation for Discord response
           await progressTracker.addUpdate({
             stage: 'responding',
             message: 'Generating production-ready code...',
