@@ -40,6 +40,8 @@ const { runPromptImprover } = require('../dist/jobs/promptImprover');
 const { runPlanner } = require('../dist/jobs/planner');
 const { runCodeGenerator } = require('../dist/jobs/codeGenerator');
 const { OpenRouterService } = require('../dist/ai/openRouterService');
+const axios = require('axios');
+const cheerio = require('cheerio');
 
 // Check if we should test LLM stages
 const testWithLLM = process.argv.includes('--with-llm');
@@ -47,9 +49,17 @@ const testWithLLM = process.argv.includes('--with-llm');
 // Get project type from env (default: static_html for cost control)
 const projectType = process.env.TEST_PROJECT_TYPE || 'static_html';
 
+// Hosting provider URLs for RAG (minecraft website context)
+const hostingProviders = [
+  { name: 'Bisect Hosting', url: 'https://www.bisecthosting.com/' },
+  { name: 'Sparked Host', url: 'https://sparkedhost.com/' },
+  { name: 'Pebblehost', url: 'https://pebblehost.com/' },
+  { name: 'Bloom Host', url: 'https://bloom.host/' }
+];
+
 // Single message based on project type
 const messageMap = {
-  'static_html': 'create a landing page for my startup',
+  'static_html': 'create a minecraft server hosting comparison website',
   'node_project': 'make an Express API server',
   'discord_bot': 'build a discord bot with slash commands'
 };
@@ -79,6 +89,46 @@ function logHTML(msg, type = 'info') {
   const timestamp = new Date().toISOString();
   htmlLog.push({ timestamp, message: msg, type });
   console.log(msg);
+}
+
+// Fetch hosting provider content for RAG
+async function fetchHostingProviderContent() {
+  logHTML('\n📡 Fetching hosting provider websites for RAG context...');
+  const ragContent = [];
+  
+  for (const provider of hostingProviders) {
+    try {
+      logHTML(`  Fetching ${provider.name}...`);
+      const response = await axios.get(provider.url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        },
+        timeout: 10000
+      });
+      
+      const $ = cheerio.load(response.data);
+      
+      // Extract text content (remove scripts, styles)
+      $('script, style, nav, footer, header').remove();
+      const text = $('body').text()
+        .replace(/\s+/g, ' ')
+        .trim()
+        .substring(0, 2000); // Limit to 2000 chars per site
+      
+      ragContent.push({
+        provider: provider.name,
+        url: provider.url,
+        content: text
+      });
+      
+      logHTML(`  ✓ Fetched ${provider.name} (${text.length} chars)`);
+    } catch (error) {
+      logHTML(`  ⚠ Failed to fetch ${provider.name}: ${error.message}`, 'warning');
+    }
+  }
+  
+  logHTML(`✓ Fetched ${ragContent.length}/${hostingProviders.length} hosting providers\n`);
+  return ragContent;
 }
 
 async function runTests() {
@@ -206,6 +256,27 @@ async function runTests() {
       console.log('\n📍 Step 6: Run Code Generator (LLM #3)');
       try {
         const aiService = new OpenRouterService();
+        
+        // Fetch hosting provider content for RAG if it's a minecraft/static_html project
+        let ragContext = '';
+        if (projectType === 'static_html' && testMessage.includes('minecraft')) {
+          const ragContent = await fetchHostingProviderContent();
+          if (ragContent.length > 0) {
+            ragContext = '\n\nADDITIONAL CONTEXT (Minecraft Hosting Providers):\n';
+            ragContent.forEach(item => {
+              ragContext += `\n--- ${item.provider} (${item.url}) ---\n${item.content}\n`;
+            });
+            
+            // Store RAG context in job for reference
+            job.ragContext = ragContext;
+          }
+        }
+        
+        // Add RAG context to the job spec before code generation
+        if (ragContext && job.spec) {
+          job.spec.ragContext = ragContext;
+        }
+        
         markStageStart(job, 'codegen');
         await runCodeGenerator(job, aiService);
         markStageEnd(job, 'codegen');

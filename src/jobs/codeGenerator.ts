@@ -304,6 +304,11 @@ ${job.spec.spec}
 Acceptance Checklist (MUST satisfy ALL items):
 ${job.spec.acceptanceChecklist.map((item, i) => `${i + 1}. ${item}`).join('\n')}
 
+${(job.spec as any).ragContext ? `
+REFERENCE CONTENT (Use for inspiration and context):
+${(job.spec as any).ragContext}
+` : ''}
+
 EXECUTION PLAN:
 Build Strategy: ${job.plan.buildStrategy}
 
