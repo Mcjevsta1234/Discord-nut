@@ -232,10 +232,11 @@ Generate the execution plan JSON now.`;
   let rawResponse: string | null = null;
   let plan: Plan | null = null;
   let tokenUsage = {
-    promptTokens: null as number | null,
-    completionTokens: null as number | null,
-    totalTokens: null as number | null,
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
     model,
+    cost: 0,
   };
   
   // Attempt 1: Initial call
@@ -243,7 +244,7 @@ Generate the execution plan JSON now.`;
     attempt = 1;
     writeJobLog(job, `Attempt ${attempt}: Calling LLM for plan generation`);
     
-    const result = await aiService.chatCompletion(
+    const result = await aiService.chatCompletionWithMetadata(
       [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
@@ -251,8 +252,17 @@ Generate the execution plan JSON now.`;
       model
     );
     
-    rawResponse = result;
-    writeJobLog(job, `Received response (${rawResponse.length} chars)`);
+    rawResponse = result.content;
+    
+    // Track token usage from metadata
+    if (result.metadata.usage) {
+      tokenUsage.promptTokens = result.metadata.usage.promptTokens || 0;
+      tokenUsage.completionTokens = result.metadata.usage.completionTokens || 0;
+      tokenUsage.totalTokens = result.metadata.usage.totalTokens || 0;
+      tokenUsage.cost = result.metadata.estimatedCost || 0;
+    }
+    
+    writeJobLog(job, `Received response (${rawResponse.length} chars, ${tokenUsage.totalTokens} tokens, $${tokenUsage.cost.toFixed(4)})`);
     
     const parsed = parsePlannerResponse(rawResponse);
     if (parsed && validatePlan(parsed, job)) {
@@ -280,7 +290,7 @@ CRITICAL REQUIREMENTS:
 
 Return the plan JSON now:`;
       
-      const result = await aiService.chatCompletion(
+      const result = await aiService.chatCompletionWithMetadata(
         [
           { role: 'system', content: 'Return only valid JSON. No markdown. No extra text.' },
           { role: 'user', content: fixPrompt },
@@ -288,8 +298,17 @@ Return the plan JSON now:`;
         model
       );
       
-      rawResponse = result;
-      writeJobLog(job, `Received retry response (${rawResponse.length} chars)`);
+      rawResponse = result.content;
+      
+      // Add token usage from retry
+      if (result.metadata.usage) {
+        tokenUsage.promptTokens += result.metadata.usage.promptTokens || 0;
+        tokenUsage.completionTokens += result.metadata.usage.completionTokens || 0;
+        tokenUsage.totalTokens += result.metadata.usage.totalTokens || 0;
+        tokenUsage.cost += result.metadata.estimatedCost || 0;
+      }
+      
+      writeJobLog(job, `Received retry response (${rawResponse.length} chars, cumulative: ${tokenUsage.totalTokens} tokens, $${tokenUsage.cost.toFixed(4)})`);
       
       const parsed = parsePlannerResponse(rawResponse);
       if (parsed && validatePlan(parsed, job)) {

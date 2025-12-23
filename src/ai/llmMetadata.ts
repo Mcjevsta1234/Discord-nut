@@ -104,6 +104,15 @@ export const MODEL_PRICING: Record<string, { prompt: number; completion: number 
   'google/gemini-2.0-flash-exp:free': { prompt: 0, completion: 0 },
   'google/gemini-flash-1.5': { prompt: 0.075, completion: 0.30 },
   
+  // GLM-4 models (Z-AI)
+  'z-ai/glm-4-32b': { prompt: 0.10, completion: 0.10 },
+  
+  // OpenAI models
+  'openai/gpt-oss-120b': { prompt: 0.10, completion: 0.10 },
+  
+  // Minimax models
+  'minimax/minimax-m2.1': { prompt: 0.30, completion: 1.50 },
+  
   // Paid models (example pricing - adjust based on actual rates)
   'anthropic/claude-3.5-sonnet': { prompt: 3.0, completion: 15.0 },
   'openai/gpt-4': { prompt: 30.0, completion: 60.0 },

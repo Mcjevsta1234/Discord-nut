@@ -323,10 +323,11 @@ Generate the complete JSON file bundle now.`;
   let rawResponse: string | null = null;
   let result: CodegenResult | null = null;
   let tokenUsage = {
-    promptTokens: null as number | null,
-    completionTokens: null as number | null,
-    totalTokens: null as number | null,
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
     model,
+    cost: 0,
   };
   
   // Attempt 1: Initial call
@@ -334,7 +335,7 @@ Generate the complete JSON file bundle now.`;
     attempt = 1;
     writeJobLog(job, `Attempt ${attempt}: Calling LLM for code generation`);
     
-    const response = await aiService.chatCompletion(
+    const response = await aiService.chatCompletionWithMetadata(
       [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
@@ -342,8 +343,17 @@ Generate the complete JSON file bundle now.`;
       model
     );
     
-    rawResponse = response;
-    writeJobLog(job, `Received response (${rawResponse.length} chars)`);
+    rawResponse = response.content;
+    
+    // Track token usage from metadata
+    if (response.metadata.usage) {
+      tokenUsage.promptTokens = response.metadata.usage.promptTokens || 0;
+      tokenUsage.completionTokens = response.metadata.usage.completionTokens || 0;
+      tokenUsage.totalTokens = response.metadata.usage.totalTokens || 0;
+      tokenUsage.cost = response.metadata.estimatedCost || 0;
+    }
+    
+    writeJobLog(job, `Received response (${rawResponse.length} chars, ${tokenUsage.totalTokens} tokens, $${tokenUsage.cost.toFixed(4)})`);
     
     // Save raw response
     const rawResponsePath = path.join(job.paths.workspaceDir, 'generated_response.json');
@@ -391,16 +401,25 @@ Requirements:
 
 Return the JSON now:`;
       
-      const response = await aiService.chatCompletion(
+      const response = await aiService.chatCompletionWithMetadata(
         [
-          { role: 'system', content: 'Return only valid JSON. No markdown. No extra text.' },
+          { role: 'system', content: 'Return only valid JSON. No markdown. No extra text. Generate complete file contents with no placeholders.' },
           { role: 'user', content: fixPrompt },
         ],
         model
       );
       
-      rawResponse = response;
-      writeJobLog(job, `Received retry response (${rawResponse.length} chars)`);
+      rawResponse = response.content;
+      
+      // Add token usage from retry
+      if (response.metadata.usage) {
+        tokenUsage.promptTokens += response.metadata.usage.promptTokens || 0;
+        tokenUsage.completionTokens += response.metadata.usage.completionTokens || 0;
+        tokenUsage.totalTokens += response.metadata.usage.totalTokens || 0;
+        tokenUsage.cost += response.metadata.estimatedCost || 0;
+      }
+      
+      writeJobLog(job, `Received retry response (${rawResponse.length} chars, cumulative: ${tokenUsage.totalTokens} tokens, $${tokenUsage.cost.toFixed(4)})`);
       
       // Save retry response
       const retryResponsePath = path.join(job.paths.workspaceDir, 'generated_response_retry.json');

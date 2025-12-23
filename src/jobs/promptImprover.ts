@@ -442,10 +442,11 @@ export async function runPromptImprover(
   let rawResponse: string | null = null;
   let spec: ImprovedSpec | null = null;
   let tokenUsage = {
-    promptTokens: null as number | null,
-    completionTokens: null as number | null,
-    totalTokens: null as number | null,
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
     model,
+    cost: 0,
   };
   
   // Attempt 1: Initial call
@@ -453,7 +454,7 @@ export async function runPromptImprover(
     attempt = 1;
     writeJobLog(job, `Attempt ${attempt}: Calling LLM for spec generation`);
     
-    const result = await aiService.chatCompletion(
+    const result = await aiService.chatCompletionWithMetadata(
       [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
@@ -461,11 +462,19 @@ export async function runPromptImprover(
       model
     );
     
-    rawResponse = result;
+    rawResponse = result.content;
     
-    // Try to extract token usage if available (OpenRouter sometimes includes this)
-    // For now, we'll leave as null since we don't have direct access to response metadata
-    writeJobLog(job, `Received response (${rawResponse.length} chars)`);
+    // Track token usage from metadata
+    if (result.metadata.usage) {
+      tokenUsage.promptTokens = result.metadata.usage.promptTokens || 0;
+      tokenUsage.completionTokens = result.metadata.usage.completionTokens || 0;
+      tokenUsage.totalTokens = result.metadata.usage.totalTokens || 0;
+      tokenUsage.cost = result.metadata.estimatedCost || 0;
+    }
+    
+    writeJobLog(job, `Received response (${rawResponse.length} chars, ${tokenUsage.totalTokens} tokens, $${tokenUsage.cost.toFixed(4)})`);
+    
+    spec = parseImproverResponse(rawResponse, job);
     
     spec = parseImproverResponse(rawResponse);
     
@@ -538,7 +547,7 @@ Required structure:
 
 Return the JSON now:`;
         
-        const result = await aiService.chatCompletion(
+        const result = await aiService.chatCompletionWithMetadata(
           [
             { role: 'system', content: 'Return only valid JSON. No markdown. No extra text. Minimum 1200 words in spec field.' },
             { role: 'user', content: fixPrompt },
@@ -546,8 +555,17 @@ Return the JSON now:`;
           model
         );
         
-        rawResponse = result;
-        writeJobLog(job, `Received retry response (${rawResponse.length} chars)`);
+        rawResponse = result.content;
+        
+        // Add token usage from retry
+        if (result.metadata.usage) {
+          tokenUsage.promptTokens += result.metadata.usage.promptTokens || 0;
+          tokenUsage.completionTokens += result.metadata.usage.completionTokens || 0;
+          tokenUsage.totalTokens += result.metadata.usage.totalTokens || 0;
+          tokenUsage.cost += result.metadata.estimatedCost || 0;
+        }
+        
+        writeJobLog(job, `Received retry response (${rawResponse.length} chars, cumulative: ${tokenUsage.totalTokens} tokens, $${tokenUsage.cost.toFixed(4)})`);
       }
       
       spec = parseImproverResponse(rawResponse, job);
