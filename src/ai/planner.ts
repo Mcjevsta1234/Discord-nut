@@ -99,8 +99,8 @@ export class Planner {
     }
 
     // Minecraft server status - ALWAYS use tool for server queries
-    // Enhanced pattern to catch: "status of witchyworlds", "check witchyworlds", "how is [server]"
-    if (/(minecraft|\\bmc\\b|server status|servers? (up|down|online|offline)|are the servers|how are the servers|network status|server ips?|what's the ip|minecraft servers|witchyworlds|witchy|status of|check.*server|how is.*server)/.test(normalized)) {
+    // More precise pattern to avoid false positives from web/hosting context
+    if (/(minecraft|\\bmc\\b|witchyworlds|witchy|server\s+status|servers?\s+(up|down|online|offline)|are\s+the\s+servers|how\s+are\s+the\s+servers|network\s+status|server\s+ips?|what'?s\s+the\s+ip|minecraft\s+servers?|check\s+(mc|minecraft|witchy))/.test(normalized) && !/(website|web\s*app|hosting|domain|http|html|css)/.test(normalized)) {
       console.log('✅ MINECRAFT STATUS DETECTED - using minecraft_status tool');
       return {
         actions: [{ type: 'tool', toolName: 'minecraft_status', toolParams: {} }],

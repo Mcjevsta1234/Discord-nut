@@ -64,8 +64,9 @@ export class RouterService {
     const lower = userMessage.toLowerCase();
     const words = lower.split(/\s+/).length;
 
-    // Code detection patterns
+    // Code detection patterns - includes both existing code AND coding requests
     const codePatterns = [
+      // Existing code patterns
       /```/,
       /function\s+\w+\s*\(/,
       /class\s+\w+/,
@@ -79,6 +80,10 @@ export class RouterService {
       /\brefactor\b/i,
       /\bcode\s+review\b/i,
       /\bdebug\b/i,
+      // Coding request patterns
+      /\b(code|write|create|build|make|develop)\s+(me\s+)?(a\s+)?(website|web\s*app|app|application|program|script|function|component)/i,
+      /\b(code|program|script|develop)\s+.*(in\s+(python|javascript|typescript|java|html|css|react|node))/i,
+      /\b(html|css|javascript|python|react|vue|angular|node\.?js)\s+(website|app|code|program)/i,
     ];
 
     // Greeting patterns
@@ -297,11 +302,16 @@ export class RouterService {
         role: 'user',
         content: `Classify: "${userMessage.substring(0, 150)}"
 
-Routes: chat/tool/image/coding
+Routes:
+- coding: write/create/build code, websites, apps (NOT minecraft queries)
+- tool: needs calculator, time, search, minecraft status
+- image: generate/draw/create visual
+- chat: conversation, questions, advice
+
 Flags: code=${flags.containsCode}, tools=${flags.needsTools}, complex=${flags.explicitDepthRequest}
 
-JSON only:
-{"route":"chat","confidence":0.9,"reason":"why"}`,
+JSON:
+{"route":"coding","confidence":0.9,"reason":"why"}`,
       },
     ];
 
