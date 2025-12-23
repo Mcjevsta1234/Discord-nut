@@ -26,6 +26,7 @@ import {
   copyWorkspaceToOutput,
   runPromptImprover,
   runPlanner,
+  runCodeGenerator,
   Job,
 } from '../jobs';
 
@@ -502,24 +503,40 @@ Current message: ${message.content}`
             throw error;
           }
           
-          // STEP 5: Generate artifacts (placeholder for now, LLM later)
-          markStageStart(job, 'artifact_generation');
+          // STEP 5: Run Code Generator (LLM Call #3)
+          markStageStart(job, 'codegen');
           await progressTracker.addUpdate({
             stage: 'responding',
-            message: 'Setting up project structure...',
+            message: 'Generating production-ready code...',
             timestamp: Date.now(),
           });
           
-          const artifactFiles = writePlaceholderArtifacts(job);
-          console.log(`📁 Generated ${artifactFiles.length} placeholder files`);
-          updateJobStatus(job, 'generated');
-          markStageEnd(job, 'artifact_generation');
-          
-          // STEP 6: Copy to output directory
-          markStageStart(job, 'output_copy');
-          const copiedCount = copyWorkspaceToOutput(job);
-          writeJobLog(job, `Copied ${copiedCount} files to output directory`);
-          markStageEnd(job, 'output_copy');
+          try {
+            await runCodeGenerator(job, this.aiService);
+            updateJobStatus(job, 'generated');
+            markStageEnd(job, 'codegen');
+            
+            console.log(`💻 Code generated: ${job.codegenResult?.files.length} files`);
+            console.log(`   Notes: ${job.codegenResult?.notes}`);
+          } catch (error) {
+            writeJobLog(job, `Code generator failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            updateJobStatus(job, 'failed');
+            markStageEnd(job, 'codegen');
+            
+            // Fallback to placeholders if codegen fails
+            console.log(`⚠ Codegen failed, using placeholder artifacts`);
+            markStageStart(job, 'artifact_generation');
+            const artifactFiles = writePlaceholderArtifacts(job);
+            console.log(`📁 Generated ${artifactFiles.length} placeholder files`);
+            markStageEnd(job, 'artifact_generation');
+            
+            markStageStart(job, 'output_copy');
+            const copiedCount = copyWorkspaceToOutput(job);
+            writeJobLog(job, `Copied ${copiedCount} files to output directory`);
+            markStageEnd(job, 'output_copy');
+            
+            throw error;
+          }
           
           // STEP 6: Mark job as done
           updateJobStatus(job, 'done');
@@ -528,19 +545,15 @@ Current message: ${message.content}`
           console.log(`   Output: ${job.paths.outputDir}`);
           console.log(`   Logs: ${job.diagnostics.logsPath}`);
           
-          // STEP 7: TODO - Project Planner (will be added later)
-          // Creates file structure, dependencies, configuration (LLM Call #2)
+          // STEP 7: TODO - Docker build/test (will be added later)
           
-          // STEP 8: TODO - Code Generator (will be added later)
-          // Generates actual code files based on plan (replaces placeholder logic above)
-          
-          // STEP 9: TODO - Deployer (will be added later)
+          // STEP 8: TODO - Deployer (will be added later)
           // For static_html and node_project with previewAllowed=true
           
           // TEMPORARY: Use existing code generation for Discord response
           await progressTracker.addUpdate({
             stage: 'responding',
-            message: 'Generating production-ready code...',
+            message: 'Formatting response...',
             timestamp: Date.now(),
           });
           

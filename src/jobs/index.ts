@@ -10,3 +10,4 @@ export * from './jobManager';
 export * from './artifactWriter';
 export * from './promptImprover';
 export * from './planner';
+export * from './codeGenerator';

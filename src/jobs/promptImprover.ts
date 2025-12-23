@@ -136,7 +136,7 @@ FILE STRUCTURE EXAMPLE:
 - script.js: vanilla JS for interactions (if needed)
 - README.md: setup instructions
 
-ACCEPTANCE CHECKLIST (15-30 items):
+ACCEPTANCE CHECKLIST (15-40 items):
 Include items like:
 - "Header contains logo and navigation with 4+ links"
 - "Hero section has headline, subtitle, and CTA button"
@@ -207,7 +207,7 @@ SCRIPTS (package.json):
 - "test": run test suite (if tests included)
 - "lint": code linting
 
-ACCEPTANCE CHECKLIST (20-30 items):
+ACCEPTANCE CHECKLIST (20-40 items):
 - "Server starts on configurable PORT from .env"
 - "All routes return JSON responses"
 - "Invalid request bodies return 400 with Zod error details"
@@ -279,7 +279,7 @@ README REQUIREMENTS:
 - How to enable intents in Developer Portal
 - Troubleshooting common issues
 
-ACCEPTANCE CHECKLIST (15-25 items):
+ACCEPTANCE CHECKLIST (15-40 items):
 - "Bot uses discord.js v14"
 - "Commands are slash commands (interactions)"
 - "deploy-commands.js successfully registers all commands"
@@ -296,17 +296,51 @@ ACCEPTANCE CHECKLIST (15-25 items):
 /**
  * Validate the improved spec JSON structure
  */
-function validateSpec(data: any): data is ImprovedSpec {
-  if (!data || typeof data !== 'object') return false;
-  if (typeof data.title !== 'string' || !data.title) return false;
-  if (!['static_html', 'node_project', 'discord_bot'].includes(data.projectType)) return false;
-  if (typeof data.spec !== 'string' || !data.spec) return false;
-  if (!data.output || typeof data.output !== 'object') return false;
-  if (!['single_file', 'multi_file'].includes(data.output.format)) return false;
-  if (typeof data.output.primaryFile !== 'string' || !data.output.primaryFile) return false;
-  if (!Array.isArray(data.acceptanceChecklist)) return false;
-  if (data.acceptanceChecklist.length < 15 || data.acceptanceChecklist.length > 30) return false;
-  if (!data.acceptanceChecklist.every((item: any) => typeof item === 'string' && item.length > 0)) return false;
+function validateSpec(data: any, job?: Job): data is ImprovedSpec {
+  const log = (msg: string) => {
+    if (job) writeJobLog(job, msg);
+  };
+  
+  if (!data || typeof data !== 'object') {
+    log('Validation failed: data is not an object');
+    return false;
+  }
+  if (typeof data.title !== 'string' || !data.title) {
+    log('Validation failed: title is missing or not a string');
+    return false;
+  }
+  if (!['static_html', 'node_project', 'discord_bot'].includes(data.projectType)) {
+    log(`Validation failed: projectType '${data.projectType}' is invalid`);
+    return false;
+  }
+  if (typeof data.spec !== 'string' || !data.spec) {
+    log('Validation failed: spec is missing or not a string');
+    return false;
+  }
+  if (!data.output || typeof data.output !== 'object') {
+    log('Validation failed: output is missing or not an object');
+    return false;
+  }
+  if (!['single_file', 'multi_file'].includes(data.output.format)) {
+    log(`Validation failed: output.format '${data.output?.format}' is invalid`);
+    return false;
+  }
+  if (typeof data.output.primaryFile !== 'string' || !data.output.primaryFile) {
+    log('Validation failed: output.primaryFile is missing or not a string');
+    return false;
+  }
+  if (!Array.isArray(data.acceptanceChecklist)) {
+    log('Validation failed: acceptanceChecklist is not an array');
+    return false;
+  }
+  if (data.acceptanceChecklist.length < 15 || data.acceptanceChecklist.length > 40) {
+    log(`Validation failed: acceptanceChecklist has ${data.acceptanceChecklist.length} items (need 15-40)`);
+    return false;
+  }
+  if (!data.acceptanceChecklist.every((item: any) => typeof item === 'string' && item.length > 0)) {
+    log('Validation failed: acceptanceChecklist contains non-string or empty items');
+    return false;
+  }
   
   return true;
 }
@@ -314,11 +348,11 @@ function validateSpec(data: any): data is ImprovedSpec {
 /**
  * Parse LLM response and extract JSON
  */
-function parseImproverResponse(response: string): ImprovedSpec | null {
+function parseImproverResponse(response: string, job?: Job): ImprovedSpec | null {
   try {
     // Try direct JSON parse first
     const parsed = JSON.parse(response);
-    if (validateSpec(parsed)) {
+    if (validateSpec(parsed, job)) {
       return parsed as ImprovedSpec;
     }
     return null;
@@ -328,7 +362,7 @@ function parseImproverResponse(response: string): ImprovedSpec | null {
     if (jsonMatch) {
       try {
         const parsed = JSON.parse(jsonMatch[1]);
-        if (validateSpec(parsed)) {
+        if (validateSpec(parsed, job)) {
           return parsed as ImprovedSpec;
         }
       } catch {
@@ -341,7 +375,7 @@ function parseImproverResponse(response: string): ImprovedSpec | null {
     if (objectMatch) {
       try {
         const parsed = JSON.parse(objectMatch[0]);
-        if (validateSpec(parsed)) {
+        if (validateSpec(parsed, job)) {
           return parsed as ImprovedSpec;
         }
       } catch {
@@ -499,7 +533,7 @@ Required structure:
     "primaryFile": "string",
     "notes": "optional string"
   },
-  "acceptanceChecklist": ["item1", "item2", ... 15-30 items]
+  "acceptanceChecklist": ["item1", "item2", ... 15-40 items]
 }
 
 Return the JSON now:`;
@@ -516,7 +550,7 @@ Return the JSON now:`;
         writeJobLog(job, `Received retry response (${rawResponse.length} chars)`);
       }
       
-      spec = parseImproverResponse(rawResponse);
+      spec = parseImproverResponse(rawResponse, job);
       
       if (spec) {
         writeJobLog(job, `✓ Successfully parsed spec on attempt ${attempt}`);
