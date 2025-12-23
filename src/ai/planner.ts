@@ -167,75 +167,33 @@ export class Planner {
     const planningPrompt: Message[] = [
       {
         role: 'system',
-        content: `You are a deterministic planner. Respond with **ONLY** valid JSON that matches the schema. No markdown, no prose, no code fences, no explanations.
+        content: `Task planner. JSON only.
 
-ALLOWED ACTION TYPES: "tool", "image", "chat" (nothing else)
-IF UNSURE: return {"actions":[{"type":"chat"}],"reasoning":"Planner fallback"}
-
-Available tools:
+Tools:
 ${toolList}
 
-Detection rules - USE TOOLS AGGRESSIVELY - NEVER ANSWER WITHOUT TOOLS:
-- Math expressions (e.g., "14*3+9", "what's 5+5") → MUST use "calculate" tool
-- Unit conversions (e.g., "6ft to cm", "convert 50kg to pounds") → MUST use "convert_units" tool
-- Currency conversions (e.g., "£25 in USD", "$100 to EUR") → MUST use "convert_currency" tool
-- GitHub queries (e.g., "summarize owner/repo", "what does this repo do") → MUST use "github_repo" tool with action="readme"
-- Time queries (ANY time question: "what time", "current time", "time is it", "show time") → MUST use "get_time" tool - NEVER answer without tool
-- Web searches ("search for", "find", "look up") → MUST use "searxng_search" tool
-- URLs/links in message → MUST use "fetch_url" tool
-- Minecraft server queries (ANY of: "server status", "servers up/down/online", "mc network", "network status", "server ips", "minecraft servers", "witchyworlds") → MUST use "minecraft_status" tool
-- Image requests ("generate", "create", "draw", "make", "show me" + "image/picture/art", "visualize", "paint", "sketch") → use "image" type
-- General conversation that doesn't fit any tool → use "chat" type
+Rules:
+- Math/calc → calculate
+- Units (6ft to cm) → convert_units
+- Currency ($→€) → convert_currency
+- Time (what time) → get_time (REQUIRED)
+- Web search → searxng_search
+- URLs → fetch_url
+- GitHub → github_repo {"action":"readme"}
+- Minecraft servers → minecraft_status (REQUIRED)
+- Images (generate/create) → image type
+- Chat → fallback
 
-CRITICAL RULES:
-- Time queries: NEVER respond without calling get_time tool first
-- Minecraft queries: NEVER respond without calling minecraft_status tool first
-- Image requests: ALWAYS use "image" type, never try to describe images with chat
-- For vague follow-ups like "generate that" or "create that please", check conversation context for previous image prompts
-- GitHub repo summaries require action="readme" parameter
-- For minecraft_status: don't specify server param if asking about default/network servers
-- ALWAYS prefer tools over chat for deterministic tasks
+Format:
+{"actions":[{"type":"tool","toolName":"name","toolParams":{}}],"reasoning":"why"}
 
-Respond with ONLY a JSON object in this format:
+Image:
+{"actions":[{"type":"image","imagePrompt":"desc","imageResolution":{"width":512,"height":512}}],"reasoning":"why"}
 
-For regular chat:
-{
-  "actions": [
-    {"type": "chat"}
-  ],
-  "reasoning": "brief explanation"
-}
-
-For tool usage:
-{
-  "actions": [
-    {"type": "tool", "toolName": "tool_name", "toolParams": {"param": "value"}}
-  ],
-  "reasoning": "brief explanation"
-}
-
-For image generation (when user requests visual/image creation OR references a previous image prompt):
-{
-  "actions": [
-    {"type": "image", "imagePrompt": "detailed description", "imageResolution": {"width": 512, "height": 512}}
-  ],
-  "reasoning": "brief explanation"
-}
-
-Image Generation Rules:
-- ALWAYS use "image" type for: "generate", "create", "draw", "make", "show me" + "image/picture/art/drawing"
-- For follow-ups like "generate that", check if previous message contained an image prompt and use it
-- For vague requests like "create that please", look at conversation context for what "that" refers to
-- Use user's exact words for imagePrompt, or reconstruct from context if they're referencing previous discussion
-- Default resolution: 512x512, unless user specifies dimensions
-
-Routing rules:
-- ALWAYS prefer tools over chat for deterministic tasks (math, conversions, repo info, server status, time)
-- Use "image" type aggressively for ANY visual/picture/drawing request
-- For imagePrompt: Use the user's EXACT words/prompt, or reconstruct from conversation context
-- Default to "chat" only for general conversation that doesn't fit any tool`,
+Chat:
+{"actions":[{"type":"chat"}],"reasoning":"why"}`,
       },
-      ...conversationContext.slice(-2), // Minimal context
+      ...conversationContext.slice(-2),
       {
         role: 'user',
         content: userMessage,

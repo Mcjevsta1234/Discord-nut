@@ -295,24 +295,13 @@ export class RouterService {
     const routerPrompt: Message[] = [
       {
         role: 'user',
-        content: `You are a message classifier. Classify the message into a route category.
+        content: `Classify: "${userMessage.substring(0, 150)}"
 
-ROUTES:
-• chat: Regular conversations, questions, general queries
-• tool: Requests requiring tools, search, calculations, lookups
-• image: Simple greetings, small talk, image-related requests
-• coding: Code writing, debugging, refactoring, technical implementation
+Routes: chat/tool/image/coding
+Flags: code=${flags.containsCode}, tools=${flags.needsTools}, complex=${flags.explicitDepthRequest}
 
-MESSAGE: "${userMessage.substring(0, 250)}"
-
-CONTEXT:
-- Has code: ${flags.containsCode ? 'yes' : 'no'}
-- Needs tools: ${flags.needsTools ? 'yes' : 'no'}
-- Complex request: ${flags.explicitDepthRequest ? 'yes' : 'no'}
-- Short message: ${flags.isShortQuery ? 'yes' : 'no'}
-
-You MUST respond with ONLY a JSON object in this EXACT format, no other text:
-{"route": "chat" | "tool" | "image" | "coding", "confidence": <number 0-1>, "reason": "<brief explanation>"}`,
+JSON only:
+{"route":"chat","confidence":0.9,"reason":"why"}`,
       },
     ];
 

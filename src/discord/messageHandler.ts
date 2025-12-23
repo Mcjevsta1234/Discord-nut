@@ -631,21 +631,18 @@ Current message: ${message.content}`
    * Reduces completion tokens without increasing prompt tokens significantly
    */
   private addConciseGuidance(messages: Message[]): Message[] {
-    // Token-efficient instruction (only 27 tokens)
     const guidanceMessage: Message = {
       role: 'system',
-      content: 'Be concise. Avoid large code/HTML blocks inline. Summarize when files will be attached. No placeholders or "continued..." messages. Complete answers only.'
+      content: 'Be concise. No large code blocks inline. Summarize attached files. Complete answers only.'
     };
     
-    // Insert guidance before the last user message for better adherence
+    // Insert guidance before the last user message
     const result = [...messages];
     const lastUserIndex = result.map(m => m.role).lastIndexOf('user');
     
     if (lastUserIndex > 0) {
-      // Insert before last user message
       result.splice(lastUserIndex, 0, guidanceMessage);
     } else {
-      // Fallback: add at the end
       result.push(guidanceMessage);
     }
     
@@ -658,7 +655,7 @@ Current message: ${message.content}`
   private addCodingGuidance(messages: Message[]): Message[] {
     const guidanceMessage: Message = {
       role: 'system',
-      content: 'IMPORTANT: When generating HTML/CSS/JS, ALWAYS create a single HTML file with inline <style> and <script> tags. Never split into separate files. Put CSS in <head> and JS before </body>. MUST be mobile-responsive: include viewport meta tag, use responsive CSS (flexbox/grid), relative units (%, rem, vw/vh), and media queries. Test that it works on mobile devices. Be concise in explanations.'
+      content: 'HTML/CSS/JS: Single file with inline <style> in <head>, <script> before </body>. Mobile: viewport meta, responsive (flex/grid), relative units, media queries. Brief explanations.'
     };
     
     // Insert guidance before the last user message
@@ -998,32 +995,19 @@ Current message: ${message.content}`
         },
         {
           role: 'user',
-          content: `CRITICAL INSTRUCTIONS FOR ${personaName.toUpperCase()}:
+          content: `User: "${userQuery}"
 
-The user asked: "${userQuery}"
-
-PERSONALITY REQUIREMENTS (MOST IMPORTANT):
+PERSONALITY (CRITICAL):
 ${personalityGuidance}
 
-DISCORD TIMESTAMP RULE:
-- If the result contains Discord timestamps like <t:1234567890:f> or <t:1234567890:R>
-- You MUST include them EXACTLY as-is in your response
-- Do NOT modify the timestamp format
-- Place them inline in your sentence naturally
+RULES:
+- Discord timestamps (<t:X:f>) MUST be EXACT
+- BE IN CHARACTER - show personality
+- Conversational, NEVER raw output
 
-Response requirements:
-1. BE IN CHARACTER - Show your full personality!
-2. Include the EXACT tool output (especially timestamps)
-3. Make it conversational and fun
-4. NEVER return raw tool output alone
+${tier === 'INSTANT' ? 'Keep timestamps EXACT!' : ''}
 
-Examples for ${personaName}:
-❌ BAD (no personality): "The time is <t:1766430477:f>"
-✅ GOOD (in character): Use your unique personality to wrap the tool data!
-
-${tier === 'INSTANT' ? '\nREMINDER: Keep Discord timestamps EXACT. Be conversational and show personality!' : ''}
-
-Now respond IN CHARACTER with the tool data:`,
+Respond IN CHARACTER:`,
         },
       ];
 
@@ -1137,7 +1121,9 @@ Now respond IN CHARACTER with the tool data:`,
         },
         {
           role: 'user',
-          content: `Based on the results above, provide a natural, conversational response to: "${userQuery}"`,
+          content: `Response to: "${userQuery}"
+
+Be natural & conversational.`,
         },
       ];
 
