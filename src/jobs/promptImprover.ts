@@ -93,7 +93,7 @@ Explicit functional requirements (minimum 10 bullet points)
 - Configuration files needed
 
 ## Non-Goals / Prohibited Behaviors
-- What NOT to do (no CDNs unless requested, no real API keys, etc)
+- What NOT to do (no paid APIs unless user provided keys, no real credentials, etc)
 - Constraints and limitations
 
 ## Acceptance Checklist
@@ -107,7 +107,8 @@ PROJECT TYPE: static_html
 
 MANDATORY REQUIREMENTS:
 - Prefer multi_file format: index.html, styles.css, script.js (if needed)
-- Completely offline (no CDNs, use data URLs for icons if needed)
+- May use CDNs and external resources (fonts, libraries, etc) UNLESS user explicitly requested offline
+- ONLY use FREE APIs and services (no paid/subscription services)
 - Provide CONCRETE content copy examples (headlines, body text, button labels)
 - Specify exact HTML5 semantic structure (<header>, <nav>, <main>, <section>, <article>, <footer>)
 - Detail every interactive component:
@@ -153,6 +154,8 @@ MANDATORY REQUIREMENTS:
 - Always multi_file format with proper structure
 - Framework: Express.js + Zod validation (unless user specified otherwise)
 - Language: JavaScript (unless TypeScript explicitly requested)
+- May use any NPM packages and external APIs UNLESS user explicitly restricted
+- ONLY use FREE APIs and services (no paid/subscription services unless user provided API keys)
 - If TypeScript: strict tsconfig with noImplicitAny, strictNullChecks
 
 FILE STRUCTURE (required detail):
