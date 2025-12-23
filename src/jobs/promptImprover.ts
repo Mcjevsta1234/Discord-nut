@@ -47,21 +47,23 @@ The "spec" field must be VERY detailed with explicit requirements. Use \\n for l
     static_html: `
 PROJECT TYPE: static_html
 Requirements for spec field:
-- Prefer completely offline (no CDNs, no external imports) unless user explicitly requested
+- Prefer multi_file format with separate HTML, CSS, and JS files for better organization
+- Use completely offline assets (no CDNs, no external imports) unless user explicitly requested
 - Include exact layout sections, navigation, interactions, color schemes
 - Specify responsive behavior (mobile, tablet, desktop)
 - Include accessibility requirements
 - State "client-side demo/mock only" if backend would normally be needed
 - Mention specific HTML5 semantic tags to use
-- Detail CSS approach (inline styles vs <style> tag)`,
+- Detail file structure (index.html, styles.css, script.js if needed)`,
 
     node_project: `
 PROJECT TYPE: node_project
 Requirements for spec field:
+- Always use multi_file format with proper project structure
 - Default to Express.js unless user asked for different framework
 - Prefer JavaScript unless user explicitly requested TypeScript
 - Include package.json scripts needed (start, dev, etc)
-- Specify file structure (src/index.js, routes/, etc)
+- Specify detailed file structure (src/index.js, routes/, controllers/, middleware/, etc)
 - Include basic README requirements
 - Detail API endpoints if applicable
 - Mention error handling approach
@@ -71,10 +73,11 @@ Requirements for spec field:
 PROJECT TYPE: discord_bot
 Requirements for spec field:
 - Use discord.js v14
-- Default to single-file bot.js unless user asked for multi-file
+- Prefer multi_file format with organized structure (commands/, events/, config/) for better maintainability
+- Use single_file only if the bot is extremely simple (1-2 commands)
 - Include .env.example requirements (NO REAL TOKENS)
-- Specify commands/interactions needed
-- Detail event handlers required
+- Specify commands/interactions needed and their file organization
+- Detail event handlers required and where they should be placed
 - Include README with setup steps
 - Mention intents required
 - State whether slash commands or prefix commands
