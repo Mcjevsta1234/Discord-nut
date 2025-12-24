@@ -3,3 +3,10 @@ dist/
 .env
 *.log
 .DS_Store
+
+# Generated runtime files
+logs/
+context/
+bot-output.txt
+console_input.txt
+test-output.txt
