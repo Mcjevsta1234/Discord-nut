@@ -577,6 +577,14 @@ export class ResponseRenderer {
           const inputCost = (metadata.llmMetadata.totalPromptTokens / 1000000) * tierConfig.inputPricePerMillionTokens;
           const outputCost = (metadata.llmMetadata.totalCompletionTokens / 1000000) * tierConfig.outputPricePerMillionTokens;
           const totalCost = inputCost + outputCost;
+          
+          // Format cost breakdown including cache-read if present
+          let costBreakdown = `Input: $${inputCost.toFixed(4)} | Output: $${outputCost.toFixed(4)}`;
+          if (metadata.llmMetadata.responseCall?.usage?.cacheReadTokens && tierConfig.cacheReadPricePerMillionTokens !== undefined) {
+            const cacheReadCost = (metadata.llmMetadata.responseCall.usage.cacheReadTokens / 1000000) * tierConfig.cacheReadPricePerMillionTokens;
+            costBreakdown += ` | Cache-Read: $${cacheReadCost.toFixed(4)}`;
+          }
+          sections.push(`• Cost Breakdown: ${costBreakdown}`);
           sections.push(`• This message: **$${totalCost.toFixed(4)}**`);
         }
       }
@@ -605,7 +613,12 @@ export class ResponseRenderer {
           // Show prompt/completion breakdown for main response
           if (llm.responseCall?.usage) {
             const u = llm.responseCall.usage;
-            sections.push(`• Prompt: ${u.promptTokens || 0} | Completion: ${u.completionTokens || 0}`);
+            const parts = [`Prompt: ${u.promptTokens || 0}`, `Completion: ${u.completionTokens || 0}`];
+            // Add cache-read tokens if available
+            if ((u.cacheReadTokens || 0) > 0) {
+              parts.push(`Cache-Read: ${u.cacheReadTokens}`);
+            }
+            sections.push(`• Breakdown: ${parts.join(' | ')}`);
           }
 
           if (llm.executionCalls.length > 0) {

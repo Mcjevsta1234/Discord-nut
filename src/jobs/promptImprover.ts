@@ -463,7 +463,8 @@ export async function runPromptImprover(
       {
         provider: {
           order: ['Cerebras', 'Together'],
-          allow_fallbacks: true
+          allow_fallbacks: true,
+          sort: 'throughput'
         }
       }
     );

@@ -97,6 +97,7 @@ export interface ChatCompletionResponse {
     prompt_tokens?: number;
     completion_tokens?: number;
     total_tokens?: number;
+    cache_read_tokens?: number;  // For models with cache support (e.g., Gemini)
   };
   model?: string;
 }
@@ -133,6 +134,7 @@ export class OpenRouterService {
       provider?: {
         order?: string[];
         allow_fallbacks?: boolean;
+        sort?: string;
       };
       reasoning?: {
         enabled: boolean;
@@ -160,7 +162,7 @@ export class OpenRouterService {
         ...(options?.temperature !== undefined && { temperature: options.temperature }),
         ...(options?.max_tokens !== undefined && { max_tokens: options.max_tokens }),
         ...(options?.top_p !== undefined && { top_p: options.top_p }),
-        ...(options?.provider && { provider: options.provider }),
+        provider: options?.provider || { sort: 'throughput' },
         ...(options?.reasoning && { reasoning: options.reasoning }),
       };
       
@@ -203,6 +205,8 @@ export class OpenRouterService {
       }
 
       // Extract token usage from response
+      // OpenRouter includes: prompt_tokens, completion_tokens, total_tokens
+      // For models with cache support (e.g., Gemini): cache_read_tokens
       const usage = response.data.usage;
       const metadata: LLMResponseMetadata = {
         model: response.data.model || selectedModel,
@@ -211,6 +215,8 @@ export class OpenRouterService {
           promptTokens: usage.prompt_tokens,
           completionTokens: usage.completion_tokens,
           totalTokens: usage.total_tokens,
+          // Cache-read tokens are charged at reduced rate for models like Gemini
+          cacheReadTokens: usage.cache_read_tokens || 0,
         } : undefined,
         latencyMs: responseTimestamp - requestTimestamp,
         requestTimestamp,

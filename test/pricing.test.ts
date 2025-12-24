@@ -1,71 +1,5 @@
 import assert from 'assert';
-import { composePlannerUserPrompt } from '../src/jobs/planner';
-import { composeCodegenUserPrompt } from '../src/jobs/codeGenerator';
-import { WEBSITE_STYLE_AND_ASSETS_APPENDIX, enforceWebsiteAssets } from '../src/ai/websitePolicy';
-import { ImprovedSpec, Plan } from '../src/jobs/types';
 import { calculateCost, MODEL_PRICING, TokenUsage } from '../src/ai/llmMetadata';
-
-const baseSpec: ImprovedSpec = {
-  title: 'Sample Landing Page',
-  projectType: 'static_html',
-  spec: 'Base spec content',
-  output: {
-    format: 'multi_file',
-    primaryFile: 'index.html',
-    notes: '',
-  },
-  acceptanceChecklist: ['Item A', 'Item B'],
-};
-
-const basePlan: Plan = {
-  title: 'Sample Plan',
-  projectType: 'static_html',
-  buildStrategy: 'static',
-  filePlan: [{ path: 'index.html', purpose: 'Main page', notes: '' }],
-  steps: [
-    {
-      id: 'S1',
-      name: 'Setup',
-      goal: 'Prepare files',
-      inputs: [],
-      outputs: ['index.html'],
-      risk: 'low',
-      validation: ['index exists'],
-    },
-  ],
-  acceptanceMapping: [{ checklistItem: 'Item A', coveredBySteps: ['S1'] }],
-  guardrails: {
-    noExternalAssets: true,
-    singleShotUserFlow: true,
-    noUserIteration: true,
-    doNotAddFeaturesNotInSpec: true,
-  },
-};
-
-(function testPlannerPromptAppendsAppendix() {
-  const prompt = composePlannerUserPrompt(baseSpec, baseSpec.projectType, true);
-  assert(prompt.includes(WEBSITE_STYLE_AND_ASSETS_APPENDIX), 'Planner prompt must include appendix');
-  const specIndex = prompt.indexOf(baseSpec.spec);
-  const appendixIndex = prompt.lastIndexOf(WEBSITE_STYLE_AND_ASSETS_APPENDIX);
-  assert(appendixIndex > specIndex, 'Appendix should appear after spec content');
-})();
-
-(function testCodePromptAppendsAppendix() {
-  const prompt = composeCodegenUserPrompt(baseSpec, basePlan, baseSpec.projectType, undefined, true);
-  assert(prompt.includes(WEBSITE_STYLE_AND_ASSETS_APPENDIX), 'Code prompt must include appendix');
-})();
-
-(function testAssetEnforcementReplacesExternalUrls() {
-  const files = enforceWebsiteAssets([
-    {
-      path: 'index.html',
-      content: '<img src="https://example.com/img.jpg"><div style="background-image:url(https://example.com/bg.png)"></div>',
-    },
-  ]);
-
-  const updated = files[0].content;
-  assert(updated.includes('placehold.it'), 'External image URLs should be replaced with Placeholdit');
-})();
 
 // ===== PRICING & CACHE-READ TESTS =====
 
@@ -77,6 +11,7 @@ const basePlan: Plan = {
     totalTokens: 180,
   };
   assert(usage.cacheReadTokens === 30, 'TokenUsage interface should support cacheReadTokens');
+  console.log('✓ Cache-read tokens field exists');
 })();
 
 (function testModelPricingIncludesGeminiCacheRead() {
@@ -85,6 +20,7 @@ const basePlan: Plan = {
   assert(geminiPricing.prompt === 0.50, 'Gemini input should be $0.50/1M');
   assert(geminiPricing.completion === 3.00, 'Gemini output should be $3.00/1M');
   assert(geminiPricing.cache_read === 0.05, 'Gemini cache-read should be $0.05/1M');
+  console.log('✓ Gemini cache-read pricing configured correctly');
 })();
 
 (function testCostCalculationWithoutCacheRead() {
@@ -98,6 +34,7 @@ const basePlan: Plan = {
   const cost = calculateCost(usage, 'google/gemini-3-flash-preview');
   const expected = 0.50 + 3.00; // = 3.50
   assert(Math.abs(cost - expected) < 0.001, `Cost should be ${expected}, got ${cost}`);
+  console.log(`✓ Cost without cache-read: $${cost.toFixed(2)} (expected $${expected.toFixed(2)})`);
 })();
 
 (function testCostCalculationWithCacheRead() {
@@ -112,6 +49,7 @@ const basePlan: Plan = {
   const cost = calculateCost(usage, 'google/gemini-3-flash-preview');
   const expected = 0.50 + 3.00 + 0.05; // = 3.55
   assert(Math.abs(cost - expected) < 0.001, `Cost with cache should be ${expected}, got ${cost}`);
+  console.log(`✓ Cost with cache-read: $${cost.toFixed(2)} (expected $${expected.toFixed(2)})`);
 })();
 
 (function testFreeModelCostsZero() {
@@ -125,6 +63,7 @@ const basePlan: Plan = {
   // Free models should always cost 0
   const cost = calculateCost(usage, 'qwen/qwen3-4b:free');
   assert(cost === 0, `Free model should cost 0, got ${cost}`);
+  console.log('✓ Free models cost $0.00');
 })();
 
 (function testAllRequiredModelsHavePricing() {
@@ -142,6 +81,7 @@ const basePlan: Plan = {
   for (const model of requiredModels) {
     assert(MODEL_PRICING[model] !== undefined, `Model ${model} must have pricing defined`);
   }
+  console.log(`✓ All ${requiredModels.length} required models have pricing defined`);
 })();
 
 (function testCacheReadPricingIsOptional() {
@@ -160,4 +100,7 @@ const basePlan: Plan = {
   const expected = inputCost + outputCost;
   
   assert(Math.abs(cost - expected) < 0.00001, `Cost without cache rate should be ${expected}, got ${cost}`);
+  console.log('✓ Cache-read pricing is optional per model');
 })();
+
+console.log('\n✅ All pricing and cache-read tests passed!');

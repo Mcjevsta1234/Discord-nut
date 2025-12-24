@@ -42,14 +42,24 @@ export enum ModelTier {
  * HOW TO CUSTOMIZE PRICING:
  * 
  * Option 1 - Environment Variables (.env file):
- *   MODEL_SMART_INPUT_PRICE=0.14
- *   MODEL_SMART_OUTPUT_PRICE=0.28
+ *   MODEL_CODING_INPUT_PRICE=0.50
+ *   MODEL_CODING_OUTPUT_PRICE=3.00
+ *   MODEL_CODING_CACHE_READ_PRICE=0.05  # Optional: for models with cache support
  * 
  * Option 2 - Direct Edit (below in tiers config):
- *   inputPricePerMillionTokens: 0.14,
- *   outputPricePerMillionTokens: 0.28,
+ *   inputPricePerMillionTokens: 0.50,
+ *   outputPricePerMillionTokens: 3.00,
+ *   cacheReadPricePerMillionTokens: 0.05,  # Optional: cache-read tokens (e.g., Gemini)
  * 
- * Prices are in USD per 1 million tokens
+ * Three-part pricing (input/output/cache-read):
+ *   INPUT:     Cost per 1M input tokens
+ *   OUTPUT:    Cost per 1M output tokens
+ *   CACHE_READ: Cost per 1M cached tokens that are read (optional, model-specific)
+ * 
+ * IMPORTANT: Code models (CODING tier) REQUIRE prompt caching to work efficiently.
+ * Caching enables context reuse and significant cost savings on repeated queries.
+ * 
+ * Prices are in USD per 1 million tokens.
  * Find pricing at: https://openrouter.ai/models
  */
 export interface TierConfig {
@@ -64,6 +74,7 @@ export interface TierConfig {
   // Pricing in USD per 1 million tokens
   inputPricePerMillionTokens: number;
   outputPricePerMillionTokens: number;
+  cacheReadPricePerMillionTokens?: number;  // Optional: for models supporting prompt caching (e.g., Gemini)
 }
 
 /**
@@ -112,6 +123,14 @@ function getEnvBoolean(key: string, defaultValue: boolean): boolean {
 function getEnvFloat(key: string, defaultValue: number): number {
   const value = process.env[key];
   return value ? parseFloat(value) : defaultValue;
+}
+
+function getEnvOptionalFloat(key: string, defaultValue?: number): number | undefined {
+  const value = process.env[key];
+  if (value) {
+    return parseFloat(value);
+  }
+  return defaultValue;
 }
 
 /**
@@ -170,28 +189,30 @@ export const routingConfig: RoutingConfig = {
   tiers: {
     [ModelTier.INSTANT]: {
       tier: ModelTier.INSTANT,
-      modelId: getEnv('MODEL_INSTANT', 'xiaomi/mimo-v2-flash:free'),
+      modelId: getEnv('MODEL_INSTANT', 'qwen/qwen3-4b:free'),
       maxPromptTokens: getEnvNumber('MODEL_INSTANT_MAX_PROMPT', 8192),
       maxOutputTokens: getEnvNumber('MODEL_INSTANT_MAX_OUTPUT', 2048),
       costTier: 'free',
-      provider: 'xiaomi',
+      provider: 'qwen',
       supportsTools: true,
       supportsCaching: false,
       inputPricePerMillionTokens: getEnvFloat('MODEL_INSTANT_INPUT_PRICE', 0),
       outputPricePerMillionTokens: getEnvFloat('MODEL_INSTANT_OUTPUT_PRICE', 0),
+      cacheReadPricePerMillionTokens: getEnvOptionalFloat('MODEL_INSTANT_CACHE_READ_PRICE'),
     },
     
     [ModelTier.SMART]: {
       tier: ModelTier.SMART,
-      modelId: getEnv('MODEL_SMART', 'openai/gpt-oss-20b'),
+      modelId: getEnv('MODEL_SMART', 'deepseek/deepseek-r1-0528:free'),
       maxPromptTokens: getEnvNumber('MODEL_SMART_MAX_PROMPT', 131072),
       maxOutputTokens: getEnvNumber('MODEL_SMART_MAX_OUTPUT', 32000),
-      costTier: 'cheap',
-      provider: 'clarifai',
+      costTier: 'free',
+      provider: 'deepseek',
       supportsTools: true,
       supportsCaching: false,
       inputPricePerMillionTokens: getEnvFloat('MODEL_SMART_INPUT_PRICE', 0),
       outputPricePerMillionTokens: getEnvFloat('MODEL_SMART_OUTPUT_PRICE', 0),
+      cacheReadPricePerMillionTokens: getEnvOptionalFloat('MODEL_SMART_CACHE_READ_PRICE'),
     },
     
     [ModelTier.THINKING]: {
@@ -205,19 +226,21 @@ export const routingConfig: RoutingConfig = {
       supportsCaching: false,
       inputPricePerMillionTokens: getEnvFloat('MODEL_THINKING_INPUT_PRICE', 0),
       outputPricePerMillionTokens: getEnvFloat('MODEL_THINKING_OUTPUT_PRICE', 0),
+      cacheReadPricePerMillionTokens: getEnvOptionalFloat('MODEL_THINKING_CACHE_READ_PRICE'),
     },
     
     [ModelTier.CODING]: {
       tier: ModelTier.CODING,
-      modelId: getEnv('MODEL_CODING', 'kwaipilot/kat-coder-pro:free'),
+      modelId: getEnv('MODEL_CODING', 'z-ai/glm-4.7'),
       maxPromptTokens: getEnvNumber('MODEL_CODING_MAX_PROMPT', 128000),
       maxOutputTokens: getEnvNumber('MODEL_CODING_MAX_OUTPUT', 128000),
-      costTier: 'free',
-      provider: 'kwaipilot',
+      costTier: 'moderate',
+      provider: 'z-ai',
       supportsTools: true,
-      supportsCaching: false,
-      inputPricePerMillionTokens: getEnvFloat('MODEL_CODING_INPUT_PRICE', 0),
-      outputPricePerMillionTokens: getEnvFloat('MODEL_CODING_OUTPUT_PRICE', 0),
+      supportsCaching: true,  // GLM-4.7 supports prompt caching
+      inputPricePerMillionTokens: getEnvFloat('MODEL_CODING_INPUT_PRICE', 0.40),
+      outputPricePerMillionTokens: getEnvFloat('MODEL_CODING_OUTPUT_PRICE', 1.50),
+      cacheReadPricePerMillionTokens: getEnvOptionalFloat('MODEL_CODING_CACHE_READ_PRICE', 0.11),  // Cache-read pricing
     },
   },
 };

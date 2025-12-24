@@ -77,34 +77,57 @@ function validateCodegenResult(parsed: any): ValidationOutcome {
   };
 }
 
+/**
+ * Robust JSON parser for LLM responses - handles markdown blocks, trailing commas, extra text
+ */
 function parseCodegenResponse(raw: string): CodegenResult {
-  const trimmed = raw.trim();
+  let jsonStr = raw.trim();
   
-  let jsonStr = trimmed;
-  if (trimmed.startsWith('```json')) {
-    const match = trimmed.match(/```json\s*([\s\S]*?)\s*```/);
-    if (match) {
-      jsonStr = match[1].trim();
-    }
-  } else if (trimmed.startsWith('```')) {
-    const match = trimmed.match(/```\s*([\s\S]*?)\s*```/);
+  // Step 1: Remove markdown code blocks
+  if (jsonStr.startsWith('```')) {
+    const match = jsonStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
     if (match) {
       jsonStr = match[1].trim();
     }
   }
-
+  
+  // Step 2: Extract JSON object if there's extra text
+  const objMatch = jsonStr.match(/\{[\s\S]*\}/);
+  if (objMatch) {
+    jsonStr = objMatch[0];
+  }
+  
+  // Step 3: Fix common JSON issues
+  // Remove trailing commas before closing braces/brackets
+  jsonStr = jsonStr.replace(/,\s*([\}\]])/g, '$1');
+  
+  // Step 4: Try to parse - if it fails, try to fix and parse again
+  let parsed: any;
   try {
-    const parsed = JSON.parse(jsonStr);
-    const validation = validateCodegenResult(parsed);
-    
-    if (!validation.ok) {
-      throw new Error(`Invalid codegen result: ${validation.errors.join('; ')}`);
+    parsed = JSON.parse(jsonStr);
+  } catch (firstError) {
+    // Try alternative parsing with relaxed JSON (allow trailing commas, comments)
+    try {
+      // Remove comments
+      let cleaned = jsonStr.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
+      
+      // Fix unescaped newlines in strings (common LLM mistake)
+      // This is tricky - we need to find strings and escape newlines within them
+      // For now, just try parsing and if it fails, give up
+      
+      parsed = JSON.parse(cleaned);
+    } catch (secondError) {
+      throw new Error(`Failed to parse JSON: ${firstError instanceof Error ? firstError.message : 'Unknown error'}. Raw response length: ${raw.length} chars. Try position ${(firstError as any).message?.match(/position (\d+)/)?.[1] || 'unknown'}`);
     }
-    
-    return validation.normalized!;
-  } catch (err) {
-    throw new Error(`Failed to parse codegen response: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }
+  
+  const validation = validateCodegenResult(parsed);
+  
+  if (!validation.ok) {
+    throw new Error(`Invalid codegen result: ${validation.errors.join('; ')}`);
+  }
+  
+  return validation.normalized!;
 }
 
 export async function runDirectCodegen(
@@ -138,8 +161,8 @@ Return ONLY the JSON object (no markdown, no explanation).`;
   writeJobLog(job, `System prompt length: ${systemPrompt.length} chars`);
   writeJobLog(job, `User request length: ${userRequest.length} chars`);
 
-  // Check if model supports reasoning (minimax, deepseek, etc)
-  const supportsReasoning = model.includes('minimax') || model.includes('deepseek-r1');
+  // Check if model supports reasoning (minimax, deepseek, gemini, gpt, glm, etc)
+  const supportsReasoning = model.includes('minimax') || model.includes('deepseek-r1') || model.includes('gemini') || model.includes('gpt') || model.includes('glm');
   
   const response = await aiService.chatCompletionWithMetadata(
     [
@@ -161,48 +184,9 @@ Return ONLY the JSON object (no markdown, no explanation).`;
     result = parseCodegenResponse(response.content);
     writeJobLog(job, `Parsed codegen result: ${result.files.length} files`);
   } catch (parseError) {
-    writeJobLog(job, `Parse failed on first attempt: ${parseError instanceof Error ? parseError.message : 'Unknown'}`);
-    
-    if (onProgress) {
-      await onProgress('Fixing JSON format...', 'Retrying with schema guidance');
-    }
-
-    const retryMessage = `Your previous output was not valid JSON. Here is what you returned:
-
-${response.content.substring(0, MAX_RESPONSE_SNAPSHOT)}
-
-Please convert this into the required JSON schema WITHOUT losing any content:
-
-{
-  "files": [{"path": "string", "content": "string"}],
-  "entrypoints": {"run": "string", "dev": "string", "build": "string"},
-  "notes": "string"
-}
-
-Return ONLY the corrected JSON object.`;
-
-    const retryResponse = await aiService.chatCompletionWithMetadata(
-      [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userRequest },
-        { role: 'assistant', content: response.content.substring(0, MAX_RESPONSE_SNAPSHOT), ...(response.reasoning_details && { reasoning_details: response.reasoning_details }) },
-        { role: 'user', content: retryMessage },
-      ],
-      model,
-      { 
-        temperature: 0.2, 
-        max_tokens: 128000,
-        ...(supportsReasoning && { reasoning: { enabled: true } }),
-      }
-    );
-
-    try {
-      result = parseCodegenResponse(retryResponse.content);
-      writeJobLog(job, `Parse succeeded on retry: ${result.files.length} files`);
-    } catch (retryError) {
-      writeJobLog(job, `Parse failed on retry: ${retryError instanceof Error ? retryError.message : 'Unknown'}`);
-      throw new Error('Failed to generate valid code after retry');
-    }
+    writeJobLog(job, `Parse failed: ${parseError instanceof Error ? parseError.message : 'Unknown'}`);
+    writeJobLog(job, `❌ RETRIES DISABLED - JSON parsing failed. Check model output.`);
+    throw new Error(`Failed to generate valid JSON: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
   }
 
   // Web asset enforcement

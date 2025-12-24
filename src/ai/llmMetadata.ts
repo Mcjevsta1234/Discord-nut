@@ -15,6 +15,7 @@ export interface TokenUsage {
   promptTokens?: number;
   completionTokens?: number;
   totalTokens?: number;
+  cacheReadTokens?: number;  // Cached prompt tokens that are read (not re-processed), for cache-aware pricing
 }
 
 /**
@@ -98,31 +99,70 @@ export interface LLMResponse<T = string> {
 /**
  * Pricing information for token-based cost estimation
  * Based on OpenRouter pricing (per 1M tokens)
+ * 
+ * Structure: { prompt: number, completion: number, cache_read?: number }
+ * - prompt: cost per 1M input tokens
+ * - completion: cost per 1M output tokens  
+ * - cache_read: cost per 1M cached tokens that are read (not re-processed)
+ *   Only applicable for models supporting prompt caching (e.g., Gemini)
  */
-export const MODEL_PRICING: Record<string, { prompt: number; completion: number }> = {
-  // Free models
+export const MODEL_PRICING: Record<string, { 
+  prompt: number; 
+  completion: number; 
+  cache_read?: number;
+}> = {
+  // ===== FREE TIER MODELS =====
   'meta-llama/llama-3.3-70b-instruct:free': { prompt: 0, completion: 0 },
+  'meta-llama/llama-3.2-3b-instruct:free': { prompt: 0, completion: 0 },
   'google/gemini-2.0-flash-exp:free': { prompt: 0, completion: 0 },
-  'google/gemini-flash-1.5': { prompt: 0.075, completion: 0.30 },
+  'qwen/qwen3-4b:free': { prompt: 0, completion: 0 },
+  'xiaomi/mimo-v2-flash:free': { prompt: 0, completion: 0 },
+  'mistralai/mistral-7b-instruct:free': { prompt: 0, completion: 0 },
+  'deepseek/deepseek-r1-0528:free': { prompt: 0, completion: 0 },
+  'allenai/olmo-3.1-32b-think:free': { prompt: 0, completion: 0 },
+  'kwaipilot/kat-coder-pro:free': { prompt: 0, completion: 0 },
   
-  // GLM-4 models (Z-AI)
-  'z-ai/glm-4-32b': { prompt: 0.10, completion: 0.10 },
+  // ===== GOOGLE GEMINI MODELS (with cache-read support) =====
+  'google/gemini-3-flash-preview': { 
+    prompt: 0.50, 
+    completion: 3.00,
+    cache_read: 0.05,  // Gemini cache-read tokens are charged at reduced rate
+  },
+  'google/gemini-flash-1.5': { 
+    prompt: 0.075, 
+    completion: 0.30,
+    cache_read: 0.0075,  // 10% of input rate for cache-read tokens
+  },
   
-  // OpenAI models
+  // ===== OPEN-SOURCE & DISCOUNTED MODELS =====
   'openai/gpt-oss-20b': { prompt: 0.10, completion: 0.10 },
   
-  // Minimax models
+  // ===== GLM-4 MODELS (Z-AI) =====
+  'z-ai/glm-4-32b': { prompt: 0.10, completion: 0.10 },
+  
+  // ===== MINIMAX MODELS =====
   'minimax/minimax-m2.1': { prompt: 0.30, completion: 1.50 },
   
-  // Paid models (example pricing - adjust based on actual rates)
+  // ===== PAID MODELS (Premium Providers) =====
   'anthropic/claude-3.5-sonnet': { prompt: 3.0, completion: 15.0 },
   'openai/gpt-4': { prompt: 30.0, completion: 60.0 },
   'openai/gpt-4-turbo': { prompt: 10.0, completion: 30.0 },
   'openai/gpt-3.5-turbo': { prompt: 0.5, completion: 1.5 },
+  'openai/gpt-5.2': { 
+    prompt: 1.75, 
+    completion: 14.00,
+    cache_read: 0.175,  // GPT-5.2 supports prompt caching
+  },
+  'z-ai/glm-4.7': {
+    prompt: 0.40,
+    completion: 1.50,
+    cache_read: 0.11,  // GLM-4.7 supports prompt caching
+  },
 };
 
 /**
  * Calculate estimated cost based on token usage and model
+ * Accounts for input, output, and cached tokens (if applicable)
  */
 export function calculateCost(usage: TokenUsage, model: string): number {
   const pricing = MODEL_PRICING[model];
@@ -132,8 +172,11 @@ export function calculateCost(usage: TokenUsage, model: string): number {
   
   const promptCost = (usage.promptTokens || 0) * pricing.prompt / 1_000_000;
   const completionCost = (usage.completionTokens || 0) * pricing.completion / 1_000_000;
+  const cacheReadCost = pricing.cache_read 
+    ? (usage.cacheReadTokens || 0) * pricing.cache_read / 1_000_000
+    : 0;
   
-  return promptCost + completionCost;
+  return promptCost + completionCost + cacheReadCost;
 }
 
 /**

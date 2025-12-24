@@ -349,7 +349,8 @@ Generate the complete JSON file bundle now.`;
       {
         provider: {
           order: ['Cerebras', 'Together'],
-          allow_fallbacks: true
+          allow_fallbacks: true,
+          sort: 'throughput'
         }
       }
     );
@@ -421,7 +422,8 @@ Return the JSON now:`;
         {
           provider: {
             order: ['Cerebras', 'Together'],
-            allow_fallbacks: true
+            allow_fallbacks: true,
+            sort: 'throughput'
           }
         }
       );

@@ -1,5 +1,6 @@
 import { ConsoleChat } from './console/consoleChat';
 import { validateRoutingConfig, logRoutingConfig } from './config/routing';
+import { config } from './config';
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {
@@ -17,8 +18,27 @@ async function main() {
   console.log('🤖 Discord Bot - Console Mode');
   console.log('Environment:', process.env.NODE_ENV || 'development');
 
+  // Validate config at startup (fails fast with helpful errors)
+  try {
+    console.log('\n🔍 Validating configuration...');
+    // Access config to trigger validation - throws if missing required env vars
+    if (!config.openRouter.apiKey) {
+      throw new Error('Missing required OpenRouter API key');
+    }
+    console.log('✅ Main configuration valid');
+  } catch (error) {
+    console.error('\n❌ FATAL: Configuration error:', error instanceof Error ? error.message : String(error));
+    console.error('\nTo fix:');
+    console.error('  1. Copy template: cp .env.example .env');
+    console.error('  2. Edit .env and fill in required values:');
+    console.error('     - OPENROUTER_API_KEY (required)');
+    console.error('     - DISCORD_TOKEN (optional if console-only)');
+    console.error('  3. Restart the bot');
+    process.exit(1);
+  }
+
   // Validate routing configuration at startup
-  console.log('\n🔍 Validating routing configuration...');
+  console.log('🔍 Validating routing configuration...');
   try {
     validateRoutingConfig();
     console.log('✅ Routing configuration valid');
