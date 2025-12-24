@@ -1,0 +1,63 @@
+.section-faq {
+  padding: 60px 20px;
+  background: white;
+}
+
+.accordion {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.accordion-item {
+  border-bottom: 1px solid #eee;
+}
+
+.accordion-header {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 16px 0;
+  font-weight: 600;
+  color: var(--text-dark);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.accordion-header:focus {
+  outline: 2px solid var(--focus-ring);
+}
+
+.accordion-header::after {
+  content: "+";
+  font-size: 1.2rem;
+  color: var(--accent-green);
+}
+
+.accordion-header[aria-expanded="true"]::after {
+  content: "−";
+}
+
+.accordion-panel {
+  padding: 0 0 16px;
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.35s ease;
+}
+
+.accordion-panel[hidden] {
+  display: block;
+}
+
+.accordion-panel p {
+  margin: 0;
+  color: #555;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .accordion-panel {
+    transition: none;
+  }
+}

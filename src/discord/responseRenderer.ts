@@ -607,6 +607,16 @@ export class ResponseRenderer {
             const u = llm.responseCall.usage;
             sections.push(`• Prompt: ${u.promptTokens || 0} | Completion: ${u.completionTokens || 0}`);
           }
+
+          if (llm.executionCalls.length > 0) {
+            const extras = llm.executionCalls
+              .map((c, idx) => {
+                const tokens = c.usage?.totalTokens || 0;
+                return `${tokens} (${this.truncate(c.model, 28)})`;
+              })
+              .join(' • ');
+            sections.push(`• Additional calls: ${extras}`);
+          }
         } else {
           sections.push('• Token data unavailable from provider');
         }
@@ -985,12 +995,11 @@ export class ResponseRenderer {
   /**
   * Extract code blocks or HTML from response for file attachment
   * STRICT RULES:
-  * - Tiny snippets (≤10 lines AND ≤200 chars) may stay inline if illustrative only
-  * - Complete programs/files MUST be attached
-  * - Full HTML/JS/CSS always attached
-  * - Correct file extensions enforced
-  * - Default to a single attachment unless multiple languages force separation
-  * Returns: { content: cleaned text, attachments: file data }
+   * - Only TINY snippets (≤10 lines AND ≤200 chars) allowed inline for illustration
+   * - ALL other code blocks are STRIPPED (not attached)
+   * - LLMs cannot generate files - use code generation pipeline only
+   * - Complete programs/files are NOT supported from chat responses
+   * Returns: { content: cleaned text, attachments: [] }
    */
   static extractCodeAndHtml(responseContent: string): {
     content: string;
@@ -1000,9 +1009,10 @@ export class ResponseRenderer {
     let cleanedContent = responseContent;
 
     // Extract code blocks (```language\ncode\n```)
+    // RULE: Only allow TINY snippets inline (≤10 lines AND ≤200 chars)
+    // All other code is stripped/removed
     const codeBlockRegex = /```([a-z0-9]*)?\n([\s\S]*?)```/gi;
     let match;
-    let blockIndex = 0;
 
     while ((match = codeBlockRegex.exec(responseContent)) !== null) {
       const language = match[1] || '';
@@ -1010,58 +1020,34 @@ export class ResponseRenderer {
       const lineCount = code.split('\n').length;
       const charCount = code.length;
       
-      // HARD RULE: Attach if > 10 lines OR > 200 chars OR is a complete program
-      const exceedsTinySnippetLimit = lineCount > 10 || charCount > 200;
-      const isCompleteProgram = this.looksLikeCompleteCode(code, language);
+      // RULE: Only allow tiny snippets inline (BOTH conditions must be met)
+      const isTinySnippet = lineCount <= 10 && charCount <= 200;
       
-      if (exceedsTinySnippetLimit || isCompleteProgram) {
-        blockIndex++;
-        const extension = this.getFileExtension(language, code);
-        const filename = this.generateFilename(language, blockIndex, extension);
-        
-        attachments.push({
-          content: code,
-          filename,
-          language: language || this.detectLanguage(code),
-        });
-        
-        // Replace with file reference
+      if (!isTinySnippet) {
+        // STRIP large code blocks entirely - they are not allowed from LLM chat
+        // User should use code generation feature instead
         cleanedContent = cleanedContent.replace(
           match[0],
-          `📎 **Code attached:** \`${filename}\``
+          `\n⚠️ **Code generation requires special handling.** For complete code, use the code generation feature or describe what you need!\n`
         );
       }
+      // Small snippets stay inline as-is
     }
 
-    // Extract HTML blocks (ALWAYS attach complete HTML files)
-    // CRITICAL: Search in cleanedContent, not responseContent, to avoid duplicating HTML from code blocks
+    // Extract HTML blocks - ALWAYS STRIP (HTML files not allowed from chat)
     const htmlRegex = /<(!DOCTYPE html|html)[\s\S]*?<\/html>/gi;
     let htmlMatch;
-    let htmlIndex = 0;
-
     while ((htmlMatch = htmlRegex.exec(cleanedContent)) !== null) {
-      const html = htmlMatch[0].trim();
-      
-      // ALWAYS attach HTML files (no inline HTML allowed)
-      htmlIndex++;
-      const filename = htmlIndex === 1 ? 'index.html' : `page-${htmlIndex}.html`;
-      
-      attachments.push({
-        content: html,
-        filename,
-        language: 'html',
-      });
-      
-      // Replace with file reference
+      // STRIP HTML entirely - not allowed from LLM chat
       cleanedContent = cleanedContent.replace(
-        html,
-        `📎 **HTML attached:** \`${filename}\``
+        htmlMatch[0],
+        `\n⚠️ **HTML file generation requires special handling.** Use the code generation feature instead!\n`
       );
     }
 
     return {
       content: cleanedContent.trim(),
-      attachments,
+      attachments, // Always empty - no files from LLM responses
     };
   }
 

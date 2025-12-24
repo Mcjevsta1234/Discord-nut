@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plans | AetherNode</title>
+    <style>
+        :root {
+            --primary: #7289da;
+            --accent: #00d2ff;
+            --bg-dark: #0a0b10;
+            --glass: rgba(255, 255, 255, 0.03);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --text-main: #e0e0e0;
+            --text-dim: #a0a0a0;
+            --font-main: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: var(--font-main);
+        }
+
+        body {
+            background: var(--bg-dark);
+            color: var(--text-main);
+            background-image: radial-gradient(circle at 50% -20%, rgba(114, 137, 218, 0.2) 0%, transparent 50%);
+            min-height: 100vh;
+            padding-top: 120px;
+        }
+
+        nav {
+            position: fixed;
+            top: 0;
+            width: 100%;
+            padding: 1.5rem 10%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(15px);
+            background: rgba(10, 11, 16, 0.8);
+            border-bottom: 1px solid var(--glass-border);
+            z-index: 1000;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            background: linear-gradient(45deg, var(--primary), var(--accent));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-decoration: none;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2.5rem;
+        }
+
+        .nav-links a {
+            color: var(--text-main);
+            text-decoration: none;
+            font-weight: 500;
+            opacity: 0.8;
+        }
+
+        .nav-links a.active { opacity: 1; color: var(--accent); }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            text-align: center;
+        }
+
+        .header-section {
+            margin-bottom: 60px;
+        }
+
+        .header-section h1 {
+            font-size: 3.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin-bottom: 100px;
+        }
+
+        .plan-card {
+            background: var(--glass);
+            border: 1px solid var(--glass-border);
+            border-radius: 24px;
+            padding: 3rem 2rem;
+            transition: 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .plan-card:hover {
+            transform: scale(1.05);
+            border-color: var(--primary);
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .plan-card.popular {
+            border: 2px solid var(--primary);
+            background: rgba(114, 137, 218, 0.05);
+        }
+
+        .badge {
+            position: absolute;
+            top: 20px;
+            right: -30px;
+            background: var(--primary);
+            color: white;
+            padding: 5px 40px;
+            transform: rotate(45deg);
+            font-size: 0.7rem;
+            font-weight: 800;
+        }
+
+        .price {
+            font-size: 3rem;
+            font-weight: 800;
+            margin: 1.5rem 0;
+        }
+
+        .price span {
+            font-size: 1rem;
+            color: var(--text-dim);
+        }
+
+        .features-list {
+            list-style: none;
+            text-align: left;
+            margin: 2rem 0;
+        }
+
+        .features-list li {
+            margin-bottom: 12px;
+            color: var(--text-dim);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .features-list li::before {
+            content: '✓';
+            color: var(--success);
+            font-weight: bold;
+        }
+
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 1rem;
+            border-radius: 12px;
+            text-decoration: none;
+            font-weight: 700;
+            transition: 0.3s;
+        }
+
+        .btn-outline {
+            border: 1px solid var(--glass-border);
+            color: white;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn:hover {
+            filter: brightness(1.2);
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <a href="index.html" class="logo">AETHERNODE</a>
+        <div class="nav-links">
+            <a href="index.html">Home</a>
+            <a href="plans.html" class="active">Plans</a>
+            <a href="about.html">About</a>
+            <a href="#">Panel</a>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="header-section">
+            <h1>Simple Pricing.</h1>
+            <p style="color: var(--text-dim)">Choose the perfect plan for your community.</p>
+        </div>
+
+        <div class="pricing-grid">
+            <div class="plan-card">
+                <h3>Grass</h3>
+                <div class="price">$4<span>/mo</span></div>
+                <ul class="features-list">
+                    <li>2GB DDR4 RAM</li>
+                    <li>1 vCore (Ryzen 7950X)</li>
+                    <li>20GB NVMe SSD</li>
+                    <li>Unlimited Slots</li>
+                </ul>
+                <a href="#" class="btn btn-outline">Select Plan</a>
+            </div>
+
+            <div class="plan-card popular">
+                <div class="badge">POPULAR</div>
+                <h3>Iron</h3>
+                <div class="price">$12<span>/mo</span></div>
+                <ul class="features-list">
+                    <li>6GB DDR4 RAM</li>
+                    <li>2 vCores (Ryzen 7950X)</li>
+                    <li>60GB NVMe SSD</li>
+                    <li>Dedicated IP Included</li>
+                </ul>
+                <a href="#" class="btn btn-primary">Select Plan</a>
+            </div>
+
+            <div class="plan-card">
+                <h3>Diamond</h3>
+                <div class="price">$24<span>/mo</span></div>
+                <ul class="features-list">
+                    <li>12GB DDR4 RAM</li>
+                    <li>4 vCores (Ryzen 7950X)</li>
+                    <li>120GB NVMe SSD</li>
+                    <li>Priority Support</li>
+                </ul>
+                <a href="#" class="btn btn-outline">Select Plan</a>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.querySelectorAll('a').forEach(link => {
+            if (link.href.includes('.html')) {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    document.body.style.opacity = '0';
+                    setTimeout(() => { window.location.href = link.href; }, 300);
+                });
+            }
+        });
+    </script>
+</body>
+</html>

@@ -48,16 +48,19 @@ export class FileContextManager {
 
   /**
    * Load context from disk
-   * Guilds: guildId + channelId + userId
-   * DMs: userId only
+   * Guilds: guildId + channelId + userId + persona
+   * DMs: userId + persona
+   * 
+   * PART F: Persona isolation - each persona has separate context
    */
   async loadContext(
     userId: string,
     channelId?: string,
-    guildId?: string
+    guildId?: string,
+    persona?: string
   ): Promise<Message[]> {
     try {
-      const contextPath = this.getContextPath(userId, channelId, guildId);
+      const contextPath = this.getContextPath(userId, channelId, guildId, persona);
 
       if (!fs.existsSync(contextPath)) {
         return []; // No context file yet
@@ -79,7 +82,7 @@ export class FileContextManager {
         content: msg.content,
       }));
     } catch (error) {
-      console.error(`Failed to load context from ${this.getContextPath(userId, channelId, guildId)}:`, error);
+      console.error(`Failed to load context from ${this.getContextPath(userId, channelId, guildId, persona)}:`, error);
       return [];
     }
   }
@@ -87,12 +90,15 @@ export class FileContextManager {
   /**
    * Append a message to context (user or assistant)
    * Only stores plain text - no embeds or metadata
+   * 
+   * PART F: Persona isolation
    */
   async appendMessage(
     userId: string,
     message: Message,
     channelId?: string,
-    guildId?: string
+    guildId?: string,
+    persona?: string
   ): Promise<void> {
     try {
       // Only store user and assistant messages (skip system)
@@ -100,7 +106,7 @@ export class FileContextManager {
         return; // System messages are not stored in persistent context
       }
 
-      const contextPath = this.getContextPath(userId, channelId, guildId);
+      const contextPath = this.getContextPath(userId, channelId, guildId, persona);
       const contextDir = path.dirname(contextPath);
 
       // Ensure directory exists
@@ -125,9 +131,10 @@ export class FileContextManager {
       }
 
       // Add message (plain text only)
+      const contentStr = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
       context.messages.push({
         role: message.role as 'user' | 'assistant',
-        content: message.content,
+        content: contentStr,
         timestamp: Date.now(),
       });
 
@@ -149,15 +156,18 @@ export class FileContextManager {
 
   /**
    * Append multiple messages (e.g., user message + assistant response)
+   * 
+   * PART F: Persona isolation
    */
   async appendMessages(
     userId: string,
     messages: Message[],
     channelId?: string,
-    guildId?: string
+    guildId?: string,
+    persona?: string
   ): Promise<void> {
     for (const msg of messages) {
-      await this.appendMessage(userId, msg, channelId, guildId);
+      await this.appendMessage(userId, msg, channelId, guildId, persona);
     }
   }
 
@@ -244,16 +254,20 @@ export class FileContextManager {
 
   /**
    * Get file system path for context file
-   * Guilds: context/guilds/{guildId}/{channelId}/{userId}.json
-   * DMs: context/dms/{userId}.json
+   * 
+   * PART F: Persona isolation
+   * - Guilds: context/guilds/{guildId}/{channelId}/{userId}_{persona}.json
+   * - DMs: context/dms/{userId}_{persona}.json
    */
-  private getContextPath(userId: string, channelId?: string, guildId?: string): string {
+  private getContextPath(userId: string, channelId?: string, guildId?: string, persona?: string): string {
+    const personaSuffix = persona ? `_${persona}` : '';
+    
     if (guildId && channelId) {
       // Guild channel context
-      return path.join(this.contextDir, 'guilds', guildId, channelId, `${userId}.json`);
+      return path.join(this.contextDir, 'guilds', guildId, channelId, `${userId}${personaSuffix}.json`);
     } else {
       // DM context
-      return path.join(this.contextDir, 'dms', `${userId}.json`);
+      return path.join(this.contextDir, 'dms', `${userId}${personaSuffix}.json`);
     }
   }
 

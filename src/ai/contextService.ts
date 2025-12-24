@@ -19,29 +19,36 @@ export class ContextService {
   /**
    * Load isolated context for a Discord user in a channel/guild or DM.
    * Returns messages in {role, content}[] format.
+   * 
+   * PART F: Includes persona for isolation
    */
-  async load(userId: string, channelId?: string, guildId?: string): Promise<Message[]> {
-    return await this.storage.loadContext(userId, channelId, guildId);
+  async load(userId: string, channelId?: string, guildId?: string, persona?: string): Promise<Message[]> {
+    return await this.storage.loadContext(userId, channelId, guildId, persona);
   }
 
   /**
    * Append a single message (user or assistant)
+   * 
+   * PART F: Includes persona for isolation
    */
-  async append(userId: string, msg: Message, channelId?: string, guildId?: string): Promise<void> {
-    await this.storage.appendMessage(userId, msg, channelId, guildId);
+  async append(userId: string, msg: Message, channelId?: string, guildId?: string, persona?: string): Promise<void> {
+    await this.storage.appendMessage(userId, msg, channelId, guildId, persona);
   }
 
   /**
    * Append user + assistant messages atomically in order
+   * 
+   * PART F: Includes persona for isolation
    */
   async appendUserAndAssistant(
     userId: string,
     userMsg: Message,
     assistantMsg: Message,
     channelId?: string,
-    guildId?: string
+    guildId?: string,
+    persona?: string
   ): Promise<void> {
-    await this.storage.appendMessages(userId, [userMsg, assistantMsg], channelId, guildId);
+    await this.storage.appendMessages(userId, [userMsg, assistantMsg], channelId, guildId, persona);
   }
 
   /**

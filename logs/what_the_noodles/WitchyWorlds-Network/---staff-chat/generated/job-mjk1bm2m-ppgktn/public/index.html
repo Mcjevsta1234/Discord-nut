@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Emma’s Minecraft Host</title>
+  <meta name="description" content="Dark themed Minecraft hosting with live console access via Pterodactyl API. Whitelisted commands only. Plans, about, and support.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Roboto+Mono:wght@400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.2/css/all.min.css">
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+  <a href="#main-content" class="skip-nav">Skip to main content</a>
+  <header class="header">
+    <div class="container">
+      <div class="brand">
+        <img src="assets/images/logo.png" alt="Emma’s Minecraft Host logo" class="logo">
+        <h1 class="site-title">Emma’s Minecraft Host</h1>
+      </div>
+      <nav class="nav" id="main-nav" aria-label="Main navigation">
+        <ul class="nav-list">
+          <li><a href="index.html" class="nav-link active" aria-current="page">Home</a></li>
+          <li><a href="plans.html" class="nav-link">Plans</a></li>
+          <li><a href="about.html" class="nav-link">About</a></li>
+          <li><a href="#" class="nav-link">FAQ</a></li>
+          <li><a href="#" class="nav-link">Support</a></li>
+        </ul>
+      </nav>
+      <button class="hamburger" id="hamburger" aria-label="Open navigation menu" aria-controls="main-nav" aria-expanded="false">
+        <i class="fas fa-bars"></i>
+      </button>
+      <aside class="offcanvas" id="offcanvas" aria-hidden="true">
+        <div class="offcanvas-header">
+          <h2 class="offcanvas-title">Menu</h2>
+          <button class="offcanvas-close" id="offcanvas-close" aria-label="Close menu" aria-controls="offcanvas" aria-expanded="false">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+        <ul class="offcanvas-list">
+          <li><a href="index.html" class="offcanvas-link active" aria-current="page">Home</a></li>
+          <li><a href="plans.html" class="offcanvas-link">Plans</a></li>
+          <li><a href="about.html" class="offcanvas-link">About</a></li>
+          <li><a href="#" class="offcanvas-link">FAQ</a></li>
+          <li><a href="#" class="offcanvas-link">Support</a></li>
+        </ul>
+      </aside>
+      <div class="console-placeholder" id="console-placeholder" aria-label="Minecraft console">
+        <div class="console-header">
+          <span class="console-title">Console</span>
+          <span class="status-indicator" id="status-indicator">Offline</span>
+        </div>
+        <div class="console-body">
+          <pre class="console-output" id="console-output" aria-live="polite"></pre>
+          <div class="console-input-wrapper">
+            <input type="text" class="console-input" id="console-input" placeholder="Enter command (e.g., /list)" aria-label="Minecraft command input">
+            <button class="console-send" id="console-send" aria-label="Send command">
+              <i class="fas fa-paper-plane"></i>
+            </button>
+          </div>
+        </div>
+        <div class="console-footer">
+          <div class="loading" id="loading" aria-hidden="true">Connecting...</div>
+        </div>
+      </div>
+    </div>
+  </header>
+  <main id="main-content">
+    <section class="hero">
+      <div class="container">
+        <h2 class="hero-title">Powerful Hosting, Real‑Time Console</h2>
+        <p class="hero-subtitle">Secure, low‑latency Minecraft servers with instant console access via Pterodactyl API.</p>
+      </div>
+    </section>
+    <section class="features">
+      <div class="container">
+        <h3>Features</h3>
+        <ul class="feature-list">
+          <li><i class="fas fa-check"></i> Real‑time console via Pterodactyl API</li>
+          <li><i class="fas fa-check"></i> Command filtering (whitelist only)</li>
+          <li><i class="fas fa-check"></i> 99.9% uptime guarantee</li>
+          <li><i class="fas fa-check"></i> DDoS protection</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-links">
+        <a href="#" aria-label="Terms">Terms</a>
+        <a href="#" aria-label="Privacy">Privacy</a>
+        <a href="#" aria-label="Support">Support</a>
+      </div>
+      <div class="social">
+        <a href="#" class="social-link" aria-label="Join our Discord">
+          <i class="fab fa-discord"></i>
+        </a>
+        <a href="#" class="social-link" aria-label="GitHub repository">
+          <i class="fab fa-github"></i>
+        </a>
+      </div>
+    </div>
+  </footer>
+  <div class="modal" id="modal" aria-hidden="true" role="dialog" aria-labelledby="modal-title">
+    <div class="modal-content">
+      <button class="modal-close" id="modal-close" aria-label="Close modal">
+        <i class="fas fa-times"></i>
+      </button>
+      <h2 class="modal-title" id="modal-title">Command Denied</h2>
+      <p class="modal-message">Command denied: Operator or power commands are unavailable.</p>
+    </div>
+  </div>
+  <script type="module" src="assets/js/script.js"></script>
+</body>
+</html>

@@ -202,6 +202,40 @@ export class ChatLogger {
     }
   }
 
+  /**
+   * Log code generation request with full details
+   */
+  logCodeGeneration(
+    prompt: string,
+    jobId: string,
+    projectType: string,
+    outputLocation: string,
+    filesGenerated: string[],
+    username: string,
+    userId: string,
+    guildName: string | null,
+    channelName: string
+  ): void {
+    try {
+      const filePath = this.getFilePath(username, userId, guildName, channelName);
+      this.ensureDir(filePath);
+      
+      const cleanPrompt = this.cleanNewlines(prompt);
+      const timestamp = new Date().toISOString();
+      
+      fs.appendFileSync(filePath, `\n=== CODE GENERATION REQUEST ===\n`);
+      fs.appendFileSync(filePath, `Timestamp: ${timestamp}\n`);
+      fs.appendFileSync(filePath, `Job ID: ${jobId}\n`);
+      fs.appendFileSync(filePath, `Project Type: ${projectType}\n`);
+      fs.appendFileSync(filePath, `User Request: ${cleanPrompt}\n`);
+      fs.appendFileSync(filePath, `Output Location: ${outputLocation}\n`);
+      fs.appendFileSync(filePath, `Files Generated: ${filesGenerated.join(', ')}\n`);
+      fs.appendFileSync(filePath, `================================\n\n`);
+    } catch (err) {
+      // Swallow logging errors
+    }
+  }
+
   private cleanNewlines(text: string): string {
     // Keep plain text readability; collapse CRLFs and trim trailing spaces.
     return (text ?? '')

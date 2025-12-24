@@ -82,20 +82,24 @@ export class PromptManager {
     const contentLower = content.toLowerCase().trim();
     const personaIds = getAllPersonaIds();
 
-    // STRICT detection - only trigger on explicit persona mentions
+    // Explicit addressing rules: match early in message to avoid false positives later
     for (const personaId of personaIds) {
-      // Pattern 1: "hey emma" or "emma " at the start of message
-      if (contentLower.startsWith(`hey ${personaId}`) || 
-          contentLower.startsWith(`${personaId} `) ||
-          contentLower === personaId) {
-        console.log(`✓ Persona detected: ${personaId} from message: "${content.substring(0, 50)}..."`);
-        return personaId;
-      }
-      
-      // Pattern 2: Comma-separated address like "emma, how are you" or "emma,"
-      if (contentLower.startsWith(`${personaId},`)) {
-        console.log(`✓ Persona detected: ${personaId} from message: "${content.substring(0, 50)}..."`);
-        return personaId;
+      // Patterns: "wiz", "hi wiz", "hey wiz", "@wiz", "wiz,", "wiz:" at start
+      const patterns = [
+        `hi ${personaId}`,
+        `hey ${personaId}`,
+        `@${personaId}`,
+        `${personaId} `,
+        `${personaId},`,
+        `${personaId}:`,
+        `${personaId}`,
+      ];
+
+      for (const p of patterns) {
+        if (contentLower.startsWith(p)) {
+          console.log(`✓ Persona detected: ${personaId} from message: "${content.substring(0, 50)}..."`);
+          return personaId;
+        }
       }
     }
 

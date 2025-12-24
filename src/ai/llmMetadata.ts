@@ -92,6 +92,7 @@ export interface AggregatedLLMMetadata {
 export interface LLMResponse<T = string> {
   content: T;
   metadata: LLMResponseMetadata;
+  reasoning_details?: any[]; // OpenRouter reasoning preservation
 }
 
 /**
@@ -108,7 +109,7 @@ export const MODEL_PRICING: Record<string, { prompt: number; completion: number 
   'z-ai/glm-4-32b': { prompt: 0.10, completion: 0.10 },
   
   // OpenAI models
-  'openai/gpt-oss-120b': { prompt: 0.10, completion: 0.10 },
+  'openai/gpt-oss-20b': { prompt: 0.10, completion: 0.10 },
   
   // Minimax models
   'minimax/minimax-m2.1': { prompt: 0.30, completion: 1.50 },

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WitchyWorlds | Magical Minecraft Hosting</title>
+    <meta name="description" content="Premium Minecraft hosting with magical performance. 99.9% Uptime, DDoS Protection, and NVMe SSDs.">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/animations.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Inter:wght@300;400;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="background-orb orb-1"></div>
+    <div class="background-orb orb-2"></div>
+    <div class="background-orb orb-3"></div>
+
+    <nav class="glass-nav">
+        <div class="container nav-container">
+            <a href="index.html" class="logo">
+                <i class="fa-solid fa-hat-wizard"></i> WitchyWorlds
+            </a>
+            <button class="mobile-toggle" aria-label="Toggle Navigation">
+                <span class="bar"></span>
+                <span class="bar"></span>
+                <span class="bar"></span>
+            </button>
+            <ul class="nav-links">
+                <li><a href="index.html" class="active">Home</a></li>
+                <li><a href="pages/plans.html">Grimoires (Plans)</a></li>
+                <li><a href="pages/about.html">The Coven</a></li>
+                <li><a href="#" class="btn-login">Client Portal</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <header class="hero">
+        <div class="container hero-grid">
+            <div class="hero-content">
+                <span class="badge">Version 1.20+ Supported</span>
+                <h1>Summon Your <span class="text-gradient">Perfect World</span></h1>
+                <p>Experience enchanting performance with our high-frequency Ryzen processors and NVMe storage. Magic without the lag.</p>
+                <div class="hero-btns">
+                    <a href="pages/plans.html" class="btn btn-primary">Start Ritual <i class="fa-solid fa-bolt"></i></a>
+                    <a href="#features" class="btn btn-ghost">Learn More</a>
+                </div>
+                <div class="server-status">
+                    <span class="status-dot online"></span>
+                    <span class="status-text">All Systems Operational</span>
+                </div>
+            </div>
+            
+            <div class="hero-console-wrapper">
+                <div class="console-header">
+                    <div class="console-controls">
+                        <span class="dot red"></span>
+                        <span class="dot yellow"></span>
+                        <span class="dot green"></span>
+                    </div>
+                    <span class="console-title">server@witchyworlds:~</span>
+                </div>
+                <div class="console-window" id="console-output">
+                    <div class="line"><span class="time">[10:23:41]</span> <span class="info">[Server thread/INFO]:</span> Starting minecraft server version 1.20.4</div>
+                    <div class="line"><span class="time">[10:23:41]</span> <span class="info">[Server thread/INFO]:</span> Loading properties</div>
+                    <div class="line"><span class="time">[10:23:42]</span> <span class="info">[Server thread/INFO]:</span> Default game type: SURVIVAL</div>
+                    <div class="line"><span class="time">[10:23:42]</span> <span class="info">[Server thread/INFO]:</span> Generating keypair</div>
+                    <div class="line"><span class="time">[10:23:43]</span> <span class="info">[Server thread/INFO]:</span> Starting Minecraft server on *:25565</div>
+                    <div class="line"><span class="time">[10:23:45]</span> <span class="success">[Server thread/INFO]:</span> Done (4.201s)! For help, type "help"</div>
+                </div>
+                <div class="console-input-area">
+                    <span class="prompt">></span>
+                    <input type="text" id="console-input" placeholder="Try /spark, /list, or /help..." autocomplete="off">
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <section id="features" class="features section-padding">
+        <div class="container">
+            <div class="section-header">
+                <h2>Magical Features</h2>
+                <p>Everything you need to run a successful server, brewed to perfection.</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card glass-card">
+                    <div class="icon-box">
+                        <i class="fa-solid fa-shield-halved"></i>
+                    </div>
+                    <h3>DDoS Protection</h3>
+                    <p>Our 480Gbps magical barrier keeps malicious attacks at bay, ensuring your realm stays online.</p>
+                </div>
+                <div class="feature-card glass-card">
+                    <div class="icon-box">
+                        <i class="fa-solid fa-microchip"></i>
+                    </div>
+                    <h3>Ryzen Power</h3>
+                    <p>Powered by Ryzen 9 7950X processors. Pure, unadulterated processing mana for your plugins.</p>
+                </div>
+                <div class="feature-card glass-card">
+                    <div class="icon-box">
+                        <i class="fa-solid fa-globe"></i>
+                    </div>
+                    <h3>Low Latency</h3>
+                    <p>Strategic locations across the globe ensure your players connect instantly via ley lines.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="cta-section">
+        <div class="container">
+            <div class="cta-box glass-card">
+                <h2>Ready to cast your spell?</h2>
+                <p>Join thousands of other wizards creating their dream servers today.</p>
+                <a href="pages/plans.html" class="btn btn-primary">View Grimoires</a>
+            </div>
+        </div>
+    </section>
+
+    <footer class="glass-footer">
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-col">
+                    <h3>WitchyWorlds</h3>
+                    <p>Premium Minecraft hosting for the modern mage.</p>
+                    <div class="socials">
+                        <a href="#"><i class="fa-brands fa-discord"></i></a>
+                        <a href="#"><i class="fa-brands fa-twitter"></i></a>
+                        <a href="#"><i class="fa-brands fa-instagram"></i></a>
+                    </div>
+                </div>
+                <div class="footer-col">
+                    <h4>Resources</h4>
+                    <ul>
+                        <li><a href="#">Knowledge Base</a></li>
+                        <li><a href="#">API Documentation</a></li>
+                        <li><a href="#">System Status</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h4>Company</h4>
+                    <ul>
+                        <li><a href="pages/about.html">About Us</a></li>
+                        <li><a href="#">Terms of Service</a></li>
+                        <li><a href="#">Privacy Policy</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2023 WitchyWorlds Hosting. Not affiliated with Mojang AB.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="js/main.js"></script>
+    <script src="js/console.js"></script>
+</body>
+</html>

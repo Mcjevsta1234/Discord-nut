@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AetherNode | High-Performance Minecraft Hosting</title>
+    <meta name="description" content="Experience lag-free Minecraft hosting with AetherNode. Enterprise hardware, DDoS protection, and instant setup.">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+</head>
+<body class="dark-theme">
+    <div class="noise-overlay"></div>
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="logo">
+                <i class="fas fa-cube"></i> AETHER<span>NODE</span>
+            </a>
+            <ul class="nav-links">
+                <li><a href="index.html" class="active">Home</a></li>
+                <li><a href="plans.html">Plans</a></li>
+                <li><a href="about.html">About</a></li>
+                <li><a href="#" class="btn-nav">Client Area</a></li>
+            </ul>
+            <div class="menu-toggle"><i class="fas fa-bars"></i></div>
+        </div>
+    </nav>
+
+    <header class="hero">
+        <div class="container hero-grid">
+            <div class="hero-content" data-reveal="left">
+                <div class="badge">Next-Gen Infrastructure</div>
+                <h1>Unleash Your <span class="text-gradient">Minecraft</span> World</h1>
+                <p>Deploy enterprise-grade servers in seconds. Powered by Ryzen 9 7950X processors and NVMe storage for the ultimate gaming experience.</p>
+                <div class="hero-btns">
+                    <a href="plans.html" class="btn-primary">View Plans <i class="fas fa-arrow-right"></i></a>
+                    <a href="#console" class="btn-secondary">Live Demo</a>
+                </div>
+            </div>
+            
+            <div class="hero-console-wrapper" id="console" data-reveal="right">
+                <div class="console-window">
+                    <div class="console-header">
+                        <div class="dots">
+                            <span></span><span></span><span></span>
+                        </div>
+                        <div class="console-title">node-01.aethernode.com - Console</div>
+                        <div class="status-pill"><span class="pulse"></span> Online</div>
+                    </div>
+                    <div class="console-body" id="consoleOutput">
+                        <div class="line">[14:02:01 INFO]: Starting minecraft server version 1.20.1</div>
+                        <div class="line">[14:02:05 INFO]: Loading properties...</div>
+                        <div class="line">[14:02:08 INFO]: Default game type: SURVIVAL</div>
+                        <div class="line">[14:02:12 INFO]: Done (11.421s)! For help, type "help"</div>
+                        <div class="line system">> AetherNode API Connected. Ready for commands.</div>
+                    </div>
+                    <div class="console-input-area">
+                        <span class="prompt">$</span>
+                        <input type="text" id="consoleInput" placeholder="Type /help or /spark tps..." autocomplete="off">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <section class="features">
+        <div class="container">
+            <div class="section-header">
+                <h2>Why Choose AetherNode?</h2>
+                <p>We don't just host servers; we power communities.</p>
+            </div>
+            <div class="feature-grid">
+                <div class="glass-card">
+                    <i class="fas fa-bolt"></i>
+                    <h3>Instant Setup</h3>
+                    <p>Your server is provisioned the moment payment is confirmed. No waiting, just playing.</p>
+                </div>
+                <div class="glass-card">
+                    <i class="fas fa-shield-halved"></i>
+                    <h3>DDoS Protection</h3>
+                    <p>Advanced 12Tbps+ mitigation ensures your community stays online even under heavy attacks.</p>
+                </div>
+                <div class="glass-card">
+                    <i class="fas fa-microchip"></i>
+                    <h3>Ryzen 9 Power</h3>
+                    <p>We use the latest Zen 4 architecture to ensure high TPS even with heavy modpacks.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-brand">
+                    <div class="logo"><i class="fas fa-cube"></i> AETHER<span>NODE</span></div>
+                    <p>Premium Minecraft hosting solutions for creators and players worldwide.</p>
+                </div>
+                <div class="footer-links">
+                    <h4>Navigation</h4>
+                    <a href="index.html">Home</a>
+                    <a href="plans.html">Plans</a>
+                    <a href="about.html">About Us</a>
+                </div>
+                <div class="footer-links">
+                    <h4>Support</h4>
+                    <a href="#">Knowledgebase</a>
+                    <a href="#">Discord Support</a>
+                    <a href="#">Status Page</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2023 AetherNode Hosting. Not an official Minecraft product.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="js/main.js"></script>
+</body>
+</html>

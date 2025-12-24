@@ -1,4 +1,6 @@
 import * as readline from 'readline';
+import * as fs from 'fs';
+import * as path from 'path';
 import { OpenRouterService, Message } from '../ai/openRouterService';
 import { MemoryManager } from '../ai/memoryManager';
 import { PromptManager } from '../discord/promptManager';
@@ -7,6 +9,9 @@ import { Planner } from '../ai/planner';
 import { ActionExecutor } from '../ai/actionExecutor';
 import { MCPClient, registerDefaultTools } from '../mcp';
 import { ChatLogger } from '../ai/chatLogger';
+import { ProjectRouter } from '../ai/projectRouter';
+import { createJob, setJobOutputToLogsDir, updateJobStatus, ensureJobDirs, writeJobLog, markStageStart, markStageEnd, runDirectCachedCodegen } from '../jobs';
+import { getCodegenModel } from '../jobs/directCachedCoder';
 
 export class ConsoleChat {
   private aiService: OpenRouterService;
@@ -212,6 +217,13 @@ export class ConsoleChat {
         console.log(`💭 Reason: ${routingDecision.routingReason}`);
       }
 
+      // Handle CODING tier with full project generation pipeline
+      if (routingDecision.tier === 'CODING') {
+        console.log('\n🧪 CODING tier detected - routing to project handler');
+        await this.handleCodeGeneration(userInput);
+        return;
+      }
+
       // Create action plan based on tier
       let plan;
       if (routingDecision.tier === 'INSTANT') {
@@ -219,8 +231,11 @@ export class ConsoleChat {
         plan = this.planner.createSyntheticPlanForInstant(userInput);
       } else {
         // Use LLM-based planning for higher tiers
+        const systemContent = (typeof composedPrompt.messages[0].content === 'string' 
+          ? composedPrompt.messages[0].content 
+          : JSON.stringify(composedPrompt.messages[0].content)) as string;
         plan = await this.planner.planActionsWithRetry(
-          composedPrompt.messages[0].content, // system prompt
+          systemContent, // system prompt
           conversation,
           routingDecision.modelId
         );
@@ -329,6 +344,83 @@ export class ConsoleChat {
 
     } catch (error) {
       console.error('\n❌ Error:', error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  private async handleCodeGeneration(userInput: string): Promise<void> {
+    try {
+      // STEP 1: Route to project type (rule-based, deterministic)
+      const projectDecision = ProjectRouter.route(userInput);
+      console.log('📦 Project Type:', projectDecision.projectType);
+      console.log('📦 Preview Allowed:', projectDecision.previewAllowed);
+      console.log('📦 Requires Build:', projectDecision.requiresBuild);
+      console.log('📦 Matched Keywords:', projectDecision.matchedKeywords.join(', '));
+      
+      // STEP 2: Create Job for lifecycle tracking
+      const job = createJob(projectDecision, {
+        userMessage: userInput,
+        userId: this.userId,
+        guildId: undefined,
+        channelId: this.channelId,
+      });
+      console.log(`\n📋 Job created: ${job.jobId}`);
+      
+      // Update output directory to use logs structure for console
+      setJobOutputToLogsDir(job, 'consoleuser', null, 'console');
+      
+      // Create job directories and initialize logging
+      ensureJobDirs(job);
+      writeJobLog(job, `Coding request from console user`);
+      writeJobLog(job, `Message: "${userInput}"`);
+      writeJobLog(job, `Project type: ${job.projectType}`);
+      writeJobLog(job, `Router decision: ${JSON.stringify(projectDecision)}`);
+      
+      // Direct code generation
+      console.log('\n💻 Generating code with direct cached prompts...');
+      markStageStart(job, 'codegen_direct');
+      try {
+        const codingModel = getCodegenModel();
+        const codegenMetadata = await runDirectCachedCodegen(job, this.aiService, codingModel);
+        updateJobStatus(job, 'generated');
+        markStageEnd(job, 'codegen_direct');
+        
+        console.log(`✅ Code generated: ${job.codegenResult?.files.length} files`);
+        if (job.codegenResult?.notes) {
+          console.log(`   Notes: ${job.codegenResult.notes}`);
+        }
+        
+        // Display output location
+        const outputDir = path.join(process.cwd(), 'generated', job.jobId);
+        if (fs.existsSync(outputDir)) {
+          console.log(`\n📁 Generated files saved to: ./generated/${job.jobId}/`);
+          const files = fs.readdirSync(outputDir);
+          console.log(`   Files: ${files.join(', ')}`);
+          
+          // Log code generation to logs folder
+          setImmediate(() => {
+            this.chatLogger.logCodeGeneration(
+              userInput,
+              job.jobId,
+              job.projectType,
+              `./generated/${job.jobId}/`,
+              files,
+              this.username,
+              this.userId,
+              null, // guildName (null for console)
+              this.channelId
+            );
+          });
+        }
+      } catch (error) {
+        writeJobLog(job, `Code generator failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        updateJobStatus(job, 'failed');
+        markStageEnd(job, 'codegen');
+        throw error;
+      }
+      
+      console.log('\n✨ Code generation complete!');
+    } catch (error) {
+      console.error('\n❌ Code generation failed:', error instanceof Error ? error.message : String(error));
     }
   }
 

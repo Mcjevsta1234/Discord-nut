@@ -183,11 +183,11 @@ export const routingConfig: RoutingConfig = {
     
     [ModelTier.SMART]: {
       tier: ModelTier.SMART,
-      modelId: getEnv('MODEL_SMART', 'openai/gpt-oss-120b:free'),
-      maxPromptTokens: getEnvNumber('MODEL_SMART_MAX_PROMPT', 32000),
-      maxOutputTokens: getEnvNumber('MODEL_SMART_MAX_OUTPUT', 16000),
-      costTier: 'free',
-      provider: 'openai',
+      modelId: getEnv('MODEL_SMART', 'openai/gpt-oss-20b'),
+      maxPromptTokens: getEnvNumber('MODEL_SMART_MAX_PROMPT', 131072),
+      maxOutputTokens: getEnvNumber('MODEL_SMART_MAX_OUTPUT', 32000),
+      costTier: 'cheap',
+      provider: 'clarifai',
       supportsTools: true,
       supportsCaching: false,
       inputPricePerMillionTokens: getEnvFloat('MODEL_SMART_INPUT_PRICE', 0),
@@ -209,15 +209,15 @@ export const routingConfig: RoutingConfig = {
     
     [ModelTier.CODING]: {
       tier: ModelTier.CODING,
-      modelId: getEnv('MODEL_CODING', 'minimax/minimax-m2.1'),
+      modelId: getEnv('MODEL_CODING', 'kwaipilot/kat-coder-pro:free'),
       maxPromptTokens: getEnvNumber('MODEL_CODING_MAX_PROMPT', 128000),
       maxOutputTokens: getEnvNumber('MODEL_CODING_MAX_OUTPUT', 128000),
       costTier: 'free',
       provider: 'kwaipilot',
       supportsTools: true,
       supportsCaching: false,
-      inputPricePerMillionTokens: getEnvFloat('MODEL_CODING_INPUT_PRICE', 0.30),
-      outputPricePerMillionTokens: getEnvFloat('MODEL_CODING_OUTPUT_PRICE', 1.50),
+      inputPricePerMillionTokens: getEnvFloat('MODEL_CODING_INPUT_PRICE', 0),
+      outputPricePerMillionTokens: getEnvFloat('MODEL_CODING_OUTPUT_PRICE', 0),
     },
   },
 };

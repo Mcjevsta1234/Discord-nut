@@ -1,0 +1,7 @@
+.site-footer {
+  background: var(--bg-cream);
+  padding: 20px;
+  text-align: center;
+  color: var(--text-dark);
+  border-top: 1px solid rgba(92, 139, 91, 0.2);
+}

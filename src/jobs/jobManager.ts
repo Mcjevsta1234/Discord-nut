@@ -39,6 +39,7 @@ export function createJob(
   const config = getJobConfig();
   const jobId = generateJobId();
   
+  // Default to temp directory structure
   const workspaceDir = path.join(config.workBase, jobId);
   const outputDir = path.join(config.outputBase, jobId);
   const logsPath = path.join(config.logBase, `${jobId}.log`);
@@ -59,11 +60,49 @@ export function createJob(
     diagnostics: {
       logsPath,
       stageTimings: {},
-      tokenUsage: { total: 0 },
+      tokenUsage: {
+        total: 0,
+        promptImprover: undefined,
+        planner: undefined,
+        generator: undefined,
+      },
+      llmMetadata: {},
+      policyFlags: {
+        prompterHasAppendix: false,
+        plannerAppendedAppendix: false,
+        codeAppendedAppendix: false,
+      },
     },
   };
 
   return job;
+}
+
+/**
+ * Update job output directory to use logs structure
+ * Call this after job creation when you have Discord context (username, guild, channel)
+ */
+export function setJobOutputToLogsDir(
+  job: Job, 
+  username: string, 
+  guildName: string | null, 
+  channelName: string
+): void {
+  const logsBase = 'logs';
+  const sanitized = {
+    username: sanitizeForPath(username),
+    guildName: guildName ? sanitizeForPath(guildName) : 'dms',
+    channelName: sanitizeForPath(channelName),
+  };
+  
+  job.paths.outputDir = path.join(
+    logsBase,
+    sanitized.username,
+    sanitized.guildName,
+    sanitized.channelName,
+    'generated',
+    job.jobId
+  );
 }
 
 /**

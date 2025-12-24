@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cottage Minecraft Hosting – Home</title>
+  <meta name="description" content="Low‑latency Minecraft server hosting with rustic charm. View live console and manage your server.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" integrity="sha512-xh6O/CkQoPOWDdYTDqeRdPCVd1SpvCA9XXcUnZS2FmJNp1coAFzvtCN9BmamE+4aHK8yyUHUSCcJHgXloTyT2A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/modernizr/2.8.3/modernizr.min.js" integrity="sha512-0MGrN2ztB/hCZAG4yckN9yq+Rgo8VbqoO5980EY3q47n5I3G2WQlGqO1RnIvqDy4lQgY+8tQrXgZ+2rQcQ+2w==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+  <header class="header">
+    <div class="container">
+      <div class="header__brand">
+        <svg class="logo" viewBox="0 0 64 64" aria-label="Cottage Minecraft Hosting logo" role="img">
+          <title>Cottage Minecraft Hosting logo</title>
+          <rect x="10" y="40" width="44" height="20" rx="4" fill="#6b4c2f"/>
+          <polygon points="32,10 50,30 14,30" fill="#c94c39"/>
+          <rect x="20" y="44" width="24" height="12" rx="2" fill="#f2efe4"/>
+        </svg>
+        <h1 class="brand-text">Cottage Minecraft Hosting</h1>
+      </div>
+      <button class="hamburger" id="hamburger" aria-label="Open navigation menu" aria-expanded="false" aria-controls="nav-menu">
+        <svg width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="4" y="6" width="16" height="2" rx="1" fill="currentColor"/>
+          <rect x="4" y="12" width="16" height="2" rx="1" fill="currentColor"/>
+          <rect x="4" y="18" width="16" height="2" rx="1" fill="currentColor"/>
+        </svg>
+      </button>
+      <nav class="nav" id="nav-menu" aria-label="Main navigation">
+        <ul class="nav__list">
+          <li class="nav__item"><a href="index.html" class="nav__link" aria-current="page">Home</a></li>
+          <li class="nav__item"><a href="plans.html" class="nav__link">Plans</a></li>
+          <li class="nav__item"><a href="about.html" class="nav__link">About</a></li>
+          <li class="nav__item"><a href="mailto:contact@cottagehosting.example" class="nav__link" target="_blank" rel="noopener noreferrer">Contact</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main-content" class="main">
+    <section class="hero">
+      <div class="container">
+        <div class="hero__content">
+          <div class="hero__text">
+            <h2 class="hero__title">Cottage Minecraft Hosting</h2>
+            <p class="hero__subtitle">Low‑latency hosting with rustic charm.</p>
+            <a href="plans.html" class="cta-btn" aria-label="Get Started">Get Started</a>
+          </div>
+          <div class="console">
+            <div class="console__header">
+              <span class="console__label">Console</span>
+              <div class="spinner" id="console-spinner" aria-hidden="true">
+                <svg class="spinner-icon" viewBox="0 0 50 50">
+                  <circle class="path" cx="25" cy="25" r="20" fill="none" stroke="#c94c39" stroke-width="4"></circle>
+                </svg>
+              </div>
+            </div>
+            <pre class="console__output" id="console-output" role="log" aria-live="polite" aria-label="Console output" tabindex="0">
+              <span class="console__prompt">> </span>Welcome to Cottage Hosting console.
+            </pre>
+            <div class="console__input-wrap">
+              <label for="command-input" class="sr-only">Command Input</label>
+              <input id="command-input" type="text" class="command-input" placeholder="Type a command…" autocomplete="off" list="command-suggestions">
+              <datalist id="command-suggestions">
+                <option value="/spark profiler">
+                <option value="/spark tps">
+                <option value="/spark healthreport --memory">
+                <option value="/list">
+                <option value="/help">
+              </datalist>
+            </div>
+          </div>
+        </div>
+      </div>
+      <picture class="hero__bg">
+        <source srcset="assets/img/hero.webp" type="image/webp">
+        <img src="assets/img/hero.jpg" alt="Rustic cottage background" loading="lazy">
+      </picture>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>&copy; Cottage Minecraft Hosting 2025. All rights reserved.</p>
+    </div>
+  </footer>
+
+  <script type="module" src="script.js" defer></script>
+</body>
+</html>

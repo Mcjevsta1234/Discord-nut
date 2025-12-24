@@ -1,0 +1,375 @@
+ConsoleUser: hey emma
+bot: Heyyy! What's up? 😏
+ConsoleUser: Emma code me a simple calculator app in react
+bot: **Simple React Calculator**
+
+Bet, here's a clean and simple calculator for you ✨
+
+```jsx
+import { useState } from 'react';
+
+function Calculator() {
+  const [display, setDisplay] = useState('0');
+  const [previousValue, setPreviousValue] = useState(null);
+  const [operator, setOperator] = useState(null);
+  const [waitingForOperand, setWaitingForOperand] = useState(false);
+
+  const inputDigit = (digit) => {
+    if (waitingForOperand) {
+      setDisplay(digit);
+      setWaitingForOperand(false);
+    } else {
+      setDisplay(display === '0' ? digit : display + digit);
+    }
+  };
+
+  const inputDecimal = () => {
+    if (waitingForOperand) {
+      setDisplay('0.');
+      setWaitingForOperand(false);
+      return;
+    }
+    if (!display.includes('.')) {
+      setDisplay(display + '.');
+    }
+  };
+
+  const clear = () => {
+    setDisplay('0');
+    setPreviousValue(null);
+    setOperator(null);
+    setWaitingForOperand(false);
+  };
+
+  const performOperation = (nextOperator) => {
+    const inputValue = parseFloat(display);
+
+    if (previousValue === null) {
+      setPreviousValue(inputValue);
+    } else if (operator) {
+      const currentValue = previousValue || 0;
+      let result;
+
+      switch (operator) {
+        case '+':
+          result = currentValue + inputValue;
+          break;
+        case '-':
+          result = currentValue - inputValue;
+          break;
+        case '×':
+          result = currentValue * inputValue;
+          break;
+        case '÷':
+          result = currentValue / inputValue;
+          break;
+        default:
+          result = inputValue;
+      }
+
+      setDisplay(String(result));
+      setPreviousValue(result);
+    }
+
+    setWaitingForOperand(true);
+    setOperator(nextOperator);
+  };
+
+  const calculate = () => {
+    if (!operator || previousValue === null) return;
+
+    const inputValue = parseFloat(display);
+    let result;
+
+    switch (operator) {
+      case '+':
+        result = previousValue + inputValue;
+        break;
+      case '-':
+        result = previousValue - inputValue;
+        break;
+      case '×':
+        result = previousValue * inputValue;
+        break;
+      case '÷':
+        result = previousValue / inputValue;
+        break;
+      default:
+        result = inputValue;
+    }
+
+    setDisplay(String(result));
+    setPreviousValue(null);
+    setOperator(null);
+    setWaitingForOperand(true);
+  };
+
+  const buttons = [
+    { label: 'C', action: clear, type: 'function' },
+    { label: '±', action: () => setDisplay(String(-parseFloat(display))), type: 'function' },
+    { label: '%', action: () => setDisplay(String(parseFloat(display) / 100)), type: 'function' },
+    { label: '÷', action: () => performOperation('÷'), type: 'operator' },
+    { label: '7', action: () => inputDigit('7'), type: 'digit' },
+    { label: '8', action: () => inputDigit('8'), type: 'digit' },
+    { label: '9', action: () => inputDigit('9'), type: 'digit' },
+    { label: '×', action: () => performOperation('×'), type: 'operator' },
+    { label: '4', action: () => inputDigit('4'), type: 'digit' },
+    { label: '5', action: () => inputDigit('5'), type: 'digit' },
+    { label: '6', action: () => inputDigit('6'), type: 'digit' },
+    { label: '-', action: () => performOperation('-'), type: 'operator' },
+    { label: '1', action: () => inputDigit('1'), type: 'digit' },
+    { label: '2', action: () => inputDigit('2'), type: 'digit' },
+    { label: '3', action: () => inputDigit('3'), type: 'digit' },
+    { label: '+', action: () => performOperation('+'), type: 'operator' },
+    { label: '0', action: () => inputDigit('0'), type: 'digit', width: 2 },
+    { label: '.', action: inputDecimal, type: 'digit' },
+    { label: '=', action: calculate, type: 'function' },
+  ];
+
+  return (
+    <div style={styles.container}>
+      <div style={styles.display}>{display}</div>
+      <div style={styles.buttonGrid}>
+        {buttons.map((btn, index) => (
+          <button
+            key={index}
+            onClick={btn.action}
+            style={{
+              ...styles.button,
+              ...(btn.type === 'operator' ? styles.operatorBtn : {}),
+              ...(btn.type === 'function' ? styles.functionBtn : {}),
+              ...(btn.width === 2 ? styles.doubleWidth : {}),
+            }}
+          >
+            {btn.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const styles = {
+  container: {
+    maxWidth: '300px',
+    margin: '20px auto',
+    fontFamily: 'Arial, sans-serif',
+    borderRadius: '12px',
+    overflow: 'hidden',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+  },
+  display: {
+    backgroundColor: '#1a1a1a',
+    color: '#fff',
+    fontSize: '2.5rem',
+    padding: '20px',
+    textAlign: 'right',
+    minHeight: '70px',
+  },
+  buttonGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(4, 1fr)',
+    gap: '1px',
+    backgroundColor: '#333',
+  },
+  button: {
+    padding: '20px',
+    fontSize: '1.25rem',
+    border: 'none',
+    backgroundColor: '#f5f5f5',
+    cursor: 'pointer',
+    transition: 'background 0.2s',
+  },
+  operatorBtn: {
+    backgroundColor: '#ff9f0a',
+    color: '#fff',
+  },
+  functionBtn: {
+    backgroundColor: '#a5a5a5',
+    color: '#000',
+  },
+  doubleWidth: {
+    gridColumn: 'span 2',
+  },
+};
+
+export default Calculator;
+```
+
+**How to use it:**
+1. Create a new component file: `Calculator.jsx`
+2. Import it in your App: `import Calculator from './Calculator';`
+3. Drop it in like any other component
+
+**Features:**
+• Basic ops: `+`, `-`, `×`, `÷`
+• Decimal points, clear, negate, percentage
+• Clean iPhone-style grid layout
+• Fully responsive
+
+Not bad for a freshman, right? 😏 Got questions or want me to add dark mode or history? Just say the word!
+ConsoleUser: Emma code me a simple calculator app in react
+ConsoleUser: Emma code me a simple calculator app in react
+ConsoleUser: Emma code me a simple calculator app in react
+ConsoleUser: Emma code me a simple calculator app in react
+ConsoleUser: Emma code me a simple calculator app in react
+ConsoleUser: code me a minecraft hosting wesbite
+ConsoleUser: code me a cutesy react minecraft hosting website with a cottage theme, mock console and about pages
+ConsoleUser: test
+ConsoleUser: code me a cute cottage themed minecraft hosting website with a console page that uses pterodactyl api to display the demo server console (no buttons. and limit commands to /spark tps, /list, anything /spark like /spark healthreport --memory and basic commands. NO power action commands, op or similar
+ConsoleUser: code me a simple todo list app
+ConsoleUser: code me a cute cottage themed minecraft hosting website with a console page that uses pterodactyl api to display the demo server console (no buttons. and limit commands to /spark tps, /list, anything /spark like /spark healthreport --memory and basic commands. NO power action commands, op or similar
+ConsoleUser: code me a cute cottage themed minecraft hosting website with a console page that uses pterodactyl api to display the demo server console (no buttons. and limit commands to /spark tps, /list, anything /spark like /spark healthreport --memory and basic commands. NO power action commands, op or similar
+ConsoleUser: code me a cute cottage themed minecraft hosting website
+ConsoleUser: hey
+bot: Hey! What's up? 😊
+ConsoleUser: could you generate me a minecraft hosting website in a cute cottagy theme, with a pterodactyl api integration to display a demo server console on the index page, add command sending but block power commands like op, stop, restart, kill etc but allow things like /spark, /spark tps. /spark healthreport --memory /list /gamerule etc, aswell as having seperate about, knowledgebase and plans pages.
+ConsoleUser: could you generate me a minecraft hosting website in a cute cottagy theme, with a mock console, about page knowledgebase etc
+ConsoleUser: generate me a cute cottage themed minecraft hosting website
+ConsoleUser: generate me a cute minecraft cottage themed hosting website using react components
+ConsoleUser: generate me a cute minecraft cottage themed hosting website using react components
+ConsoleUser: Get-ChildItem "C:\Users\Noodle\AppData\Local\Temp\discord-bot-jobs\logs" | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | ForEach-Object { Write-Host "`n=== LATEST JOB LOG ==="; Get-Content $_.FullName -Tail 30 }
+ConsoleUser: npm run build
+ConsoleUser: generate me a cute cottage themed website
+bot: **A Cute Cottage‑Themed Website in a Snap!**
+
+Below is a quick mock‑up of the layout and style.  
+You can use the image as a visual reference and then copy the HTML/CSS snippet to build the page.
+
+<div align="center">
+  ![Cottage Website Mock‑up](https://example.com/cottage_mockup.png)
+</div>
+
+---
+
+## Quick Start Guide
+
+**1. Create the folder structure**
+```
+cottage-site/
+├── index.html
+├── styles.css
+└── assets/
+    ├── cottage.png
+    └── cozy_background.jpg
+```
+
+**2. Copy the HTML**  
+(`index.html`)
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cottage Charm</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>Welcome to <span>Cozy Cottage</span></h1>
+  </header>
+
+  <section class="hero">
+    <img src="assets/cottage.png" alt="Cute Cottage">
+    <p>Experience the tranquility of a rural escape.</p>
+  </section>
+
+  <section class="features">
+    <article>
+      <h2>Warm Fireplace</h2>
+      <p>Snuggle up by the crackling fire.</p>
+    </article>
+    <article>
+      <h2>Garden Café</h2>
+      <p>Fresh tea brewed with garden herbs.</p>
+    </article>
+    <article>
+      <h2>Nature Walks</h2>
+      <p>Explore winding trails and blossoming fields.</p>
+    </article>
+  </section>
+
+  <footer>
+    <p>&copy; 2025 Cozy Cottage. All rights reserved.</p>
+  </footer>
+</body>
+</html>
+```
+
+**3. Add the CSS**  
+(`styles.css`)
+
+```css
+/* Base styles */
+body {
+  font-family: 'Playfair Display', serif;
+  background: url('assets/cozy_background.jpg') no-repeat center center/cover;
+  color: #5a4d4d;
+  margin: 0;
+  line-height: 1.6;
+  text-align: center;
+}
+
+header h1 {
+  font-size: 3rem;
+  color: #a67d5b;
+  margin: 1rem 0;
+}
+
+header span {
+  color: #8e5a3e;
+}
+
+.hero {
+  padding: 2rem 0;
+}
+
+.hero img {
+  max-width: 200px;
+  margin-bottom: 1rem;
+}
+
+.features {
+  display: flex;
+  justify-content: space-around;
+  flex-wrap: wrap;
+  padding: 2rem 0;
+}
+
+.features article {
+  background: rgba(255,255,255,0.85);
+  border-radius: 8px;
+  padding: 1rem 1.5rem;
+  margin: 0.5rem;
+  width: 250px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+footer {
+  background: #d2b48c;
+  padding: 1rem 0;
+  font-size: 0.9rem;
+}
+```
+
+---
+
+## 🚀 Next Steps
+
+• Replace the placeholder images in `/assets` with your own *cottage* photos.  
+• Add more sections (e.g., Blog, Gallery) to flesh out the site.  
+• Test on mobile—the flex layout already keeps everything responsive.
+
+Let me know if you’d like a deeper dive into any part (e.g., custom animations, JavaScript interactivity, or hosting tips). Happy building!
+ConsoleUser: boop
+bot: Boop! 😏✨
+ConsoleUser: code me a cute cottage themed website
+ConsoleUser: remembercute cottage themed minecraft hosting website
+bot: **Got it—cottage‑themed Minecraft hosting?**  
+
+I can save that for later or link you to a site that fits the vibe.  
+Just drop the URL or a name and I’ll keep it in the chat!  
+
+Want to add something extra, like a description or a favourite feature? 🙋‍♀️
+ConsoleUser: code a cute cottage themed minecraft hosting website

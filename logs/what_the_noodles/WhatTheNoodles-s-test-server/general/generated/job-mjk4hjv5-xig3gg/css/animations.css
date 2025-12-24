@@ -1,0 +1,83 @@
+/* 
+ * Animation Keyframes and Utility Classes
+ */
+
+/* Floating Animation for Orbs */
+@keyframes float-orb {
+    0% {
+        transform: translate(0, 0);
+    }
+    100% {
+        transform: translate(30px, 50px);
+    }
+}
+
+/* Fade In Up */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translate3d(0, 40px, 0);
+    }
+    to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
+}
+
+.hero-content, .hero-console-wrapper, .feature-card, .pricing-card, .about-text, .about-image {
+    animation: fadeInUp 0.8s ease-out forwards;
+}
+
+.hero-console-wrapper {
+    animation-delay: 0.2s;
+}
+
+.feature-card:nth-child(1) { animation-delay: 0.2s; }
+.feature-card:nth-child(2) { animation-delay: 0.4s; }
+.feature-card:nth-child(3) { animation-delay: 0.6s; }
+
+/* Console Cursor Blink */
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+.prompt::after {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 15px;
+    background: var(--accent);
+    margin-left: 5px;
+    animation: blink 1s infinite;
+    vertical-align: middle;
+    display: none; /* Hidden because we use input caret, but kept for custom cursors */
+}
+
+/* Hover Lift Utility */
+.hover-lift {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.hover-lift:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+}
+
+/* Glow Effect */
+.glow-text {
+    text-shadow: 0 0 10px var(--primary);
+}
+
+/* Mobile Menu Animation */
+.mobile-toggle.active .bar:nth-child(1) {
+    transform: translateY(8px) rotate(45deg);
+}
+
+.mobile-toggle.active .bar:nth-child(2) {
+    opacity: 0;
+}
+
+.mobile-toggle.active .bar:nth-child(3) {
+    transform: translateY(-8px) rotate(-45deg);
+}

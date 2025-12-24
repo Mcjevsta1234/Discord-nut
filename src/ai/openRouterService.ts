@@ -6,7 +6,74 @@ import { LLMResponse, LLMResponseMetadata, calculateCost } from './llmMetadata';
 
 export interface Message {
   role: 'system' | 'user' | 'assistant';
-  content: string;
+  content: string | ContentBlock[]; // Support content blocks for caching
+  reasoning_details?: any[]; // For reasoning preservation across iterations
+}
+
+/**
+ * PART A: Content blocks for OpenRouter prompt caching
+ */
+export interface ContentBlock {
+  type: 'text';
+  text: string;
+  cache_control?: {
+    type: 'ephemeral';
+  };
+}
+
+/**
+ * Build a message with cached content blocks
+ * 
+ * PART A: Cached blocks MUST be byte-for-byte identical across requests.
+ * NO timestamps, NO job IDs, NO dynamic data in cached sections.
+ * 
+ * @param cachedBlocks - Stable content to cache (system prompts, schemas, rubrics)
+ * @param dynamicContent - Dynamic user request (not cached)
+ * @returns Message with content blocks
+ */
+export function buildCachedMessage(
+  role: 'system' | 'user',
+  cachedBlocks: string[],
+  dynamicContent?: string,
+  model?: string
+): Message {
+  const enableCaching = process.env.OPENROUTER_PROMPT_CACHE !== '0';
+  
+  // Import modelSupportsCaching dynamically to avoid circular dependency
+  let modelCachingSupported = false;
+  if (model) {
+    try {
+      const { modelSupportsCaching } = require('./modelCaps');
+      modelCachingSupported = modelSupportsCaching(model);
+    } catch (e) {
+      // Fallback if import fails
+      modelCachingSupported = false;
+    }
+  }
+  
+  if (!enableCaching || !modelCachingSupported) {
+    // Caching disabled or model doesn't support it - send as plain string
+    const allContent = [...cachedBlocks, dynamicContent].filter(Boolean).join('\n\n');
+    console.log(`📝 buildCachedMessage: model=${model}, caching=${modelCachingSupported}, blocks=${cachedBlocks.length}, dynamic=${dynamicContent?.length || 0}, result=${allContent.length} chars`);
+    return { role, content: allContent };
+  }
+
+  // Build content blocks with caching
+  const blocks: ContentBlock[] = cachedBlocks.map(text => ({
+    type: 'text',
+    text,
+    cache_control: { type: 'ephemeral' },
+  }));
+
+  // Append dynamic content without caching
+  if (dynamicContent) {
+    blocks.push({
+      type: 'text',
+      text: dynamicContent,
+    });
+  }
+
+  return { role, content: blocks };
 }
 
 export interface RouteDecision {
@@ -23,6 +90,7 @@ export interface ChatCompletionResponse {
     message: {
       role: string;
       content: string;
+      reasoning_details?: any[];
     };
   }>;
   usage?: {
@@ -66,26 +134,69 @@ export class OpenRouterService {
         order?: string[];
         allow_fallbacks?: boolean;
       };
+      reasoning?: {
+        enabled: boolean;
+      };
     }
   ): Promise<LLMResponse> {
     const requestTimestamp = Date.now();
     const selectedModel = model; // Model selection happens at RouterService level
     
+    // LOG: Request details
+    console.log('\n🔍 === OPENROUTER API REQUEST ===');
+    console.log('Model:', selectedModel);
+    console.log('Messages:', JSON.stringify(messages.map(m => ({ 
+      role: m.role, 
+      contentLength: typeof m.content === 'string' ? m.content.length : m.content.length,
+      preview: typeof m.content === 'string' ? m.content.substring(0, 200) : '[ContentBlock[]]'
+    })), null, 2));
+    if (options?.provider) console.log('Provider config:', JSON.stringify(options.provider));
+    if (options?.reasoning) console.log('Reasoning config:', JSON.stringify(options.reasoning));
+    
     try {
+      const requestBody = {
+        model: selectedModel,
+        messages,
+        ...(options?.temperature !== undefined && { temperature: options.temperature }),
+        ...(options?.max_tokens !== undefined && { max_tokens: options.max_tokens }),
+        ...(options?.top_p !== undefined && { top_p: options.top_p }),
+        ...(options?.provider && { provider: options.provider }),
+        ...(options?.reasoning && { reasoning: options.reasoning }),
+      };
+      
       const response = await this.client.post<ChatCompletionResponse>(
         '/chat/completions',
+        requestBody,
         {
-          model: selectedModel,
-          messages,
-          ...(options?.temperature !== undefined && { temperature: options.temperature }),
-          ...(options?.max_tokens !== undefined && { max_tokens: options.max_tokens }),
-          ...(options?.top_p !== undefined && { top_p: options.top_p }),
-          ...(options?.provider && { provider: options.provider }),
+          timeout: 600000, // 3 minute timeout for code generation
         }
       );
 
       const responseTimestamp = Date.now();
+      
+      // Check if response has expected structure FIRST
+      if (!response.data || !response.data.choices || !Array.isArray(response.data.choices) || response.data.choices.length === 0) {
+        console.log('❌ Response received in', responseTimestamp - requestTimestamp, 'ms');
+        console.error('🚨 Invalid API response structure:', JSON.stringify(response.data, null, 2));
+        
+        // Check for API error message
+        if (response.data && 'error' in response.data) {
+          const apiError = (response.data as any).error;
+          throw new Error(`OpenRouter API error: ${apiError.message || JSON.stringify(apiError)}`);
+        }
+        
+        throw new Error('Invalid response structure from OpenRouter API - no choices array');
+      }
+      
+      // LOG: Response details
+      console.log('✅ Response received in', responseTimestamp - requestTimestamp, 'ms');
+      console.log('Response model:', response.data.model);
+      console.log('Response content length:', response.data.choices[0]?.message?.content?.length || 0);
+      console.log('Response preview:', response.data.choices[0]?.message?.content?.substring(0, 300));
+      console.log('=== END REQUEST ===\n');
+      
       const content = response.data.choices[0]?.message?.content;
+      const reasoning_details = response.data.choices[0]?.message?.reasoning_details;
       
       if (!content) {
         throw new Error('No content in response');
@@ -113,7 +224,7 @@ export class OpenRouterService {
         metadata.costCurrency = 'USD';
       }
 
-      return { content, metadata };
+      return { content, metadata, reasoning_details };
     } catch (error) {
       const responseTimestamp = Date.now();
       

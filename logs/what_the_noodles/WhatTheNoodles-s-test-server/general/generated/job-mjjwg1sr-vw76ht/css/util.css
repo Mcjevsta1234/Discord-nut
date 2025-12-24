@@ -1,0 +1,40 @@
+:root {
+  --bg-cream: #FAF4E4;
+  --accent-green: #5C8B5B;
+  --primary-mint: #B6EADA;
+  --secondary-sky: #AEDFF7;
+  --text-dark: #3A3A3A;
+  --focus-ring: #FF4C4C;
+  --font-header: "Lobster", cursive;
+  --font-body: "Open Sans", sans-serif;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--text-dark);
+  background: var(--bg-cream);
+  line-height: 1.35;
+}
+
+a {
+  color: var(--accent-green);
+  text-decoration: none;
+}
+
+a:focus {
+  outline: 2px solid var(--focus-ring);
+}
+
+button:focus {
+  outline: 2px solid var(--focus-ring);
+}
+
+input:focus,
+textarea:focus {
+  outline: 2px solid var(--focus-ring);
+}
+
+*:focus {
+  outline-color: var(--focus-ring);
+}

@@ -1,0 +1,213 @@
+
+> discord-nut@1.0.0 start
+> node dist/index.js
+
+[dotenv@17.2.3] injecting env (16) from .env -- tip: ­ƒöÉ prevent committing .env to code: https://dotenvx.com/precommit
+[dotenv@17.2.3] injecting env (0) from .env -- tip: ÔÜÖ´©Å  specify custom .env file path with { path: '/custom/path/.env' }
+ÔÜá´©Å [LOCK] redis module not installed, using in-memory lock only
+ÔÜá´©Å [LOCK] REDIS_URL not set or redis module missing; using in-memory lock (single-host only).
+­ƒñû Discord Bot Starting...
+Environment: development
+
+­ƒöì Validating routing configuration...
+­ƒöì Validating routing configuration...
+Ô£à Routing configuration valid
+   Mode: hybrid
+   Tiers configured: INSTANT, SMART, THINKING, CODING
+   Router model: mistralai/mistral-7b-instruct:free
+Ô£à Routing configuration valid
+
+­ƒôè Routing Configuration Summary:
+   Mode: hybrid
+   Router: mistralai/mistral-7b-instruct:free
+   Confidence threshold: 80%
+
+   Tier Models:
+   - INSTANT    ÔåÆ xiaomi/mimo-v2-flash:free
+   - SMART      ÔåÆ openai/gpt-oss-20b
+   - THINKING   ÔåÆ allenai/olmo-3.1-32b-think:free
+   - CODING     ÔåÆ kwaipilot/kat-coder-pro:free
+
+Registered MCP tool: get_time
+Registered MCP tool: searxng_search
+Registered MCP tool: fetch_url
+Registered MCP tool: minecraft_status
+Registered MCP tool: github_repo
+Registered MCP tool: calculate
+Registered MCP tool: convert_units
+Registered MCP tool: convert_currency
+Registered MCP tool: info_utils
+Registered 9 MCP tools
+­ƒÜÇ Starting Discord bot...
+Ô£à Bot is ready! Logged in as witchywizard#4441
+­ƒôè Serving 2 guilds
+
+­ƒöù OAuth Invite URL:
+https://discord.com/api/oauth2/authorize?client_id=1451393564423618630&permissions=2147871808&scope=bot%20applications.commands
+
+
+Slash commands registered
+Ô£ô Persona detected: emma from message: "hey emma..."
+­ƒô¿ [msg_1453418155270737940] Processing message from what_the_noodles: "hey emma..."
+Ô£ô [DEDUP] Registered new request msg_1453418155270737940
+Ô£ô Persona detected: emma from message: "hey emma..."
+­ƒÄ¡ Detected persona from message: emma
+­ƒº¡ [msg_1453418155270737940] instance=instance-nrfzg6 persona=emma
+­ƒôé Loaded file context: 0 messages for user 1333963857122562141 persona emma
+Ô£ô [msg_1453418155270737940] Created progress message 1453418156805849151
+Ô£ô [DEDUP] Set progress message 1453418156805849151 for request msg_1453418155270737940
+­ƒÄ» Routing message from what_the_noodles...
+
+­ƒöì ROUTING ANALYSIS START
+­ƒôØ Message: "hey emma"
+­ƒôÅ Length: 8 chars, 2 words
+­ƒÜ® Flags detected:
+   ÔÇó containsCode: false
+   ÔÇó isGreeting: true
+   ÔÇó isShortQuery: true
+   ÔÇó needsTools: false
+   ÔÇó needsSearch: false
+   ÔÇó explicitDepthRequest: false
+   ÔÇó needsLongContext: false
+
+­ƒñû HEURISTIC ROUTING:
+   Ô£à Rule 1 matched: Greeting detected
+   ­ƒôè Heuristic decision: INSTANT (95% confidence)
+   ­ƒôØ Reason: Simple greeting or small talk
+   ­ƒÄ» Model: xiaomi/mimo-v2-flash:free
+
+Ô£à FINAL DECISION: Using heuristic result
+   ­ƒÄ» Tier: INSTANT
+   ­ƒôè Confidence: 95% (>= 80% threshold)
+   ­ƒñû Model: xiaomi/mimo-v2-flash:free
+­ƒöì ROUTING ANALYSIS END
+
+­ƒöì INSTANT synthetic planner checking: hey emma
+ÔØî No tool pattern matched - using chat
+Action plan: INSTANT tier (synthetic, no LLM call)
+­ƒöì Has executable actions: false, isFallback: false, actions: [ 'chat' ]
+Skipping action execution (no tool/image actions to run)
+­ƒÆ░ INSTANT tier: using minimal prompt with file context (3 messages)
+
+­ƒöì === OPENROUTER API REQUEST ===
+Model: xiaomi/mimo-v2-flash:free
+Messages: [
+  {
+    "role": "system",
+    "contentLength": 56,
+    "preview": "You are a helpful AI assistant. Be concise and friendly."
+  },
+  {
+    "role": "system",
+    "contentLength": 1164,
+    "preview": "How You Communicate:\n- Start messages casually, no formal greetings unless the vibe calls for it\n- Use emojis naturally but don't overdo it (­ƒÿÅ, ­ƒÆà, ­ƒÿé, Ô£¿, ­ƒæÇ)\n- Contractions everywhere: \"you're\", \"do"
+  },
+  {
+    "role": "user",
+    "contentLength": 26,
+    "preview": "what_the_noodles: hey emma"
+  }
+]
+Ô£à Response received in 2132 ms
+Response model: xiaomi/mimo-v2-flash:free
+Response content length: 230
+Response preview: omg heyy ­ƒÿé whatÔÇÖs up with that username?? what_the_noodles?? i need the story there lmaoÔÇª you catch me mid-scroll through tiktok, absolutely rotting my brain out Ô£¿ howÔÇÖs your day going? anything juicy happening or just vibing? ­ƒæÇ
+=== END REQUEST ===
+
+Ô£ô [DEDUP] Final response sent for request msg_1453418155270737940
+Ô£ô [msg_1453418155270737940] Final response delivered to user
+Ô£ô Persisted context: user + response for user 1333963857122562141
+Responded to what_the_noodles in WhatTheNoodles's test server (persona: emma) with 1 action(s)
+Ô£ô [msg_1453418155270737940] Request completed successfully
+Ô£ô [DEDUP] Finalized request msg_1453418155270737940
+Ô£ô Persona detected: emma from message: "emma how do i cook a chicken..."
+­ƒô¿ [msg_1453418253174181989] Processing message from what_the_noodles: "emma how do i cook a chicken..."
+Ô£ô [DEDUP] Registered new request msg_1453418253174181989
+Ô£ô Persona detected: emma from message: "emma how do i cook a chicken..."
+­ƒÄ¡ Detected persona from message: emma
+­ƒº¡ [msg_1453418253174181989] instance=instance-nrfzg6 persona=emma
+­ƒôé Loaded file context: 0 messages for user 1333963857122562141 persona emma
+Ô£ô [msg_1453418253174181989] Created progress message 1453418254239535126
+Ô£ô [DEDUP] Set progress message 1453418254239535126 for request msg_1453418253174181989
+­ƒÄ» Routing message from what_the_noodles...
+
+­ƒöì ROUTING ANALYSIS START
+­ƒôØ Message: "emma how do i cook a chicken"
+­ƒôÅ Length: 28 chars, 7 words
+­ƒÜ® Flags detected:
+   ÔÇó containsCode: false
+   ÔÇó isGreeting: false
+   ÔÇó isShortQuery: true
+   ÔÇó needsTools: false
+   ÔÇó needsSearch: false
+   ÔÇó explicitDepthRequest: false
+   ÔÇó needsLongContext: false
+
+­ƒñû HEURISTIC ROUTING:
+   Ô£à Default: Using SMART tier for general queries
+   ­ƒôè Heuristic decision: SMART (85% confidence)
+   ­ƒôØ Reason: General-purpose query (SMART tier default)
+   ­ƒÄ» Model: openai/gpt-oss-20b
+
+Ô£à FINAL DECISION: Using heuristic result
+   ­ƒÄ» Tier: SMART
+   ­ƒôè Confidence: 85% (>= 80% threshold)
+   ­ƒñû Model: openai/gpt-oss-20b
+­ƒöì ROUTING ANALYSIS END
+
+Action plan: direct response (planner skipped)
+­ƒöì Has executable actions: false, isFallback: false, actions: [ 'chat' ]
+Skipping action execution (no tool/image actions to run)
+
+­ƒöì === OPENROUTER API REQUEST ===
+Model: openai/gpt-oss-20b
+Messages: [
+  {
+    "role": "system",
+    "contentLength": 4471,
+    "preview": "You are a Discord bot assistant. Always use Discord-native formatting for clean, scannable responses.\n\nÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ\n**FORMATTING REQUIREMENTS**\nÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉÔòÉ"
+  },
+  {
+    "role": "system",
+    "contentLength": 1826,
+    "preview": "You are Emma, an 18-year-old college freshman with a sharp wit and playful attitude. You're confident, flirty, and never afraid to speak your mind.\n\nIDENTITY - WHO YOU ARE:\n- You're a real person, 18 "
+  },
+  {
+    "role": "system",
+    "contentLength": 1164,
+    "preview": "How You Communicate:\n- Start messages casually, no formal greetings unless the vibe calls for it\n- Use emojis naturally but don't overdo it (­ƒÿÅ, ­ƒÆà, ­ƒÿé, Ô£¿, ­ƒæÇ)\n- Contractions everywhere: \"you're\", \"do"
+  },
+  {
+    "role": "system",
+    "contentLength": 89,
+    "preview": "Be concise. No large code blocks inline. Summarize attached files. Complete answers only."
+  },
+  {
+    "role": "user",
+    "contentLength": 46,
+    "preview": "what_the_noodles: emma how do i cook a chicken"
+  }
+]
+Ô£à Response received in 4713 ms
+Response model: openai/gpt-oss-20b
+Response content length: 1804
+Response preview: **Cooking a Chicken from Start to Finish**
+
+**1. Choose Your Chicken**
+ÔÇó Whole: great for roasting
+ÔÇó Pieces (breast, thighs, wings): quicker, more versatile
+ÔÇó Size: a 4ÔÇælb (Ôëê1.8ÔÇ»kg) whole chicken takes ~20ÔÇ»min per pound (Ôëê44ÔÇ»min total) at 425ÔÇ»┬░F (220ÔÇ»┬░C)
+
+**2. Prepare and Season**
+1. Pat the chicken
+=== END REQUEST ===
+
+Ô£ô [DEDUP] Final response sent for request msg_1453418253174181989
+Ô£ô [msg_1453418253174181989] Final response delivered to user
+Ô£ô Persisted context: user + response for user 1333963857122562141
+Responded to what_the_noodles in WhatTheNoodles's test server (persona: emma) with 1 action(s)
+Ô£ô [msg_1453418253174181989] Request completed successfully
+Ô£ô [DEDUP] Finalized request msg_1453418253174181989
+
+SIGINT received, shutting down gracefully...
+­ƒøæ Stopping Discord bot...

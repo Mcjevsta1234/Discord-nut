@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hosting Plans • Minecraft Hosting</title>
+  <meta name="description" content="Choose your Minecraft hosting plan: Basic, Standard, Premium.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" integrity="sha512-xh6oCKLQs5n3tX0W6V9/m38lJ1f8XxH6J5V55f8E+5Zx8r5l5a1t8tG8GpWVq6w+4tP8UfO8sBn9D7vB5O3VxQ=" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="styles.css">
+  <meta name="pterodactyl-server-uuid" content="SERVER_UUID_PLACEHOLDER">
+</head>
+<body>
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <header class="header">
+    <div class="container header__container">
+      <div class="header__brand">
+        <img src="assets/logo.png" alt="Minecraft Hosting" class="header__logo" width="48" height="48">
+        <h1 class="header__title">Minecraft Hosting</h1>
+      </div>
+      <nav class="nav" aria-label="Main navigation">
+        <button class="hamburger" id="hamburger" aria-expanded="false" aria-controls="main-menu">
+          <span class="hamburger__line"></span>
+          <span class="hamburger__line"></span>
+          <span class="hamburger__line"></span>
+        </button>
+        <ul class="nav__list" id="main-menu" role="menubar" aria-hidden="true">
+          <li class="nav__item" role="none"><a href="index.html" class="nav__link" role="menuitem">Home</a></li>
+          <li class="nav__item" role="none"><a href="plans.html" class="nav__link" role="menuitem">Plans</a></li>
+          <li class="nav__item" role="none"><a href="about.html" class="nav__link" role="menuitem">About</a></li>
+          <li class="nav__item" role="none"><a href="#" class="nav__link" role="menuitem">Contact</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main-content">
+    <section class="hero">
+      <div class="container hero__container">
+        <div class="hero__content">
+          <h1 class="hero__title">Choose Your Plan</h1>
+          <h2 class="hero__subtitle">Powerful, secure, and affordable Minecraft hosting.</h2>
+        </div>
+      </div>
+    </section>
+
+    <section class="plans" id="plans">
+      <div class="container">
+        <h2 class="section-title">Plans</h2>
+        <div class="plans__grid">
+          <article class="plan-card" data-plan-id="basic">
+            <div class="plan-card__header">
+              <img src="assets/plan1.png" alt="Basic plan icon" class="plan-card__icon">
+              <h3 class="plan-card__title">Basic</h3>
+              <p class="plan-card__price">$5.99 / month</p>
+            </div>
+            <ul class="plan-card__features">
+              <li>2GB RAM</li>
+              <li>50GB SSD Storage</li>
+              <li>5 Player Slots</li>
+              <li>1 Server</li>
+            </ul>
+            <button class="btn btn--primary plan-card__btn" data-plan="basic">Choose Plan</button>
+          </article>
+
+          <article class="plan-card" data-plan-id="standard">
+            <div class="plan-card__header">
+              <img src="assets/plan2.png" alt="Standard plan icon" class="plan-card__icon">
+              <h3 class="plan-card__title">Standard</h3>
+              <p class="plan-card__price">$11.99 / month</p>
+            </div>
+            <ul class="plan-card__features">
+              <li>4GB RAM</li>
+              <li>100GB SSD Storage</li>
+              <li>10 Player Slots</li>
+              <li>3 Servers</li>
+            </ul>
+            <button class="btn btn--primary plan-card__btn" data-plan="standard">Choose Plan</button>
+          </article>
+
+          <article class="plan-card" data-plan-id="premium">
+            <div class="plan-card__header">
+              <img src="assets/plan3.png" alt="Premium plan icon" class="plan-card__icon">
+              <h3 class="plan-card__title">Premium</h3>
+              <p class="plan-card__price">$19.99 / month</p>
+            </div>
+            <ul class="plan-card__features">
+              <li>8GB RAM</li>
+              <li>200GB SSD Storage</li>
+              <li>20 Player Slots</li>
+              <li>5 Servers</li>
+            </ul>
+            <button class="btn btn--primary plan-card__btn" data-plan="premium">Choose Plan</button>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__container">
+      <div class="footer__brand">
+        <img src="assets/logo.png" alt="Minecraft Hosting" class="footer__logo">
+        <p class="footer__copyright">© 2025 Minecraft Hosting. All rights reserved.</p>
+      </div>
+      <div class="footer__social">
+        <a href="#" aria-label="Discord" class="footer__social-link"><i class="fab fa-discord"></i></a>
+        <a href="#" aria-label="Twitter" class="footer__social-link"><i class="fab fa-twitter"></i></a>
+        <a href="#" aria-label="YouTube" class="footer__social-link"><i class="fab fa-youtube"></i></a>
+      </div>
+      <div class="footer__legal">
+        <a href="#" target="_blank" rel="noopener" class="footer__legal-link">Terms of Service</a>
+        <a href="#" target="_blank" rel="noopener" class="footer__legal-link">Privacy Policy</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Confirmation Modal -->
+  <div class="modal" id="confirm-modal" aria-hidden="true" role="dialog" aria-labelledby="confirm-title">
+    <div class="modal__overlay" tabindex="-1"></div>
+    <div class="modal__content">
+      <h2 id="confirm-title" class="modal__title">Confirm Selection</h2>
+      <p class="modal__body">You have selected the <strong id="selected-plan-name">Plan Name</strong> plan.</p>
+      <div class="modal__actions">
+        <button class="btn" id="confirm-cancel">Cancel</button>
+        <button class="btn btn--primary" id="confirm-submit">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="config.js"></script>
+  <script type="module" src="script.js"></script>
+</body>
+</html>

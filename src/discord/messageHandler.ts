@@ -4,31 +4,33 @@ import { MemoryManager } from '../ai/memoryManager';
 import { ContextService } from '../ai/contextService';
 import { FileContextManager } from '../ai/fileContextManager';
 import { PromptManager } from './promptManager';
-import { Planner, ActionPlan } from '../ai/planner';
 import { ActionExecutor } from '../ai/actionExecutor';
 import { MCPToolResult } from '../mcp';
 import { ResponseRenderer, ResponseMetadata, ProgressTracker } from './responseRenderer';
 import { aggregateLLMMetadata, LLMResponseMetadata } from '../ai/llmMetadata';
 import { RouterService } from '../ai/routerService';
-import { RoutingDecision, ModelTier } from '../ai/modelTiers';
+import { RoutingDecision } from '../ai/modelTiers';
 import { getTierConfig } from '../config/routing';
 import { ChatLogger } from '../ai/chatLogger';
-import { CodeImprover } from '../ai/codeImprover';
 import { ProjectRouter, ProjectRoutingDecision } from '../ai/projectRouter';
+import { requestRegistry, discordEventRegistry } from './requestDeduplication';
+import { acquireLock, releaseLock, getInstanceId } from './requestLockManager';
+import { Planner, ActionPlan } from '../ai/planner';
 import {
   createJob,
+  setJobOutputToLogsDir,
   ensureJobDirs,
   writeJobLog,
   markStageStart,
   markStageEnd,
   updateJobStatus,
-  writePlaceholderArtifacts,
   copyWorkspaceToOutput,
-  runPromptImprover,
-  runPlanner,
-  runCodeGenerator,
+  runDirectCachedCodegen,
+  createZipArchive,
   Job,
 } from '../jobs';
+import { getCodegenModel } from '../jobs/directCachedCoder';
+import { modelSupportsCaching } from '../ai/modelCaps';
 
 interface MessageContext {
   userContent: string;
@@ -49,7 +51,6 @@ export class MessageHandler {
   private router: RouterService;
   private messageContexts: Map<string, MessageContext>;
   private chatLogger: ChatLogger;
-  private codeImprover: CodeImprover;
 
   constructor(
     client: Client,
@@ -68,7 +69,6 @@ export class MessageHandler {
     this.router = new RouterService(aiService);
     this.messageContexts = new Map();
     this.chatLogger = new ChatLogger();
-    this.codeImprover = new CodeImprover(aiService);
   }
 
   async shouldRespond(message: DiscordMessage): Promise<boolean> {
@@ -105,10 +105,74 @@ export class MessageHandler {
     return isBotMentioned || isReplyToBot || detectedPersona !== null;
   }
 
+  /**
+   * Handle incoming Discord message
+   * 
+   * DEDUPLICATION & SINGLE-MESSAGE GUARANTEE:
+   * - Each message gets unique requestId (msg_{messageId})
+   * - requestRegistry.register() ensures only ONE invocation processes the request
+   * - Duplicate Discord events or retries are rejected early
+   * - ONE progress message created via message.reply()
+   * - All updates EDIT same message (no new messages)
+   * - Finalization prevents duplicate success/error messages
+   * - Structured logs with [requestId] prefix for tracing
+   * 
+   * Flow:
+   * 1. Generate requestId → Register in registry (rejects duplicates)
+   * 2. Create progress message → Store messageId in registry
+   * 3. Process request → Update progress via edits
+   * 4. Finalize → Mark complete (prevents duplicate errors)
+   * 
+   * See docs/DEDUPLICATION_FIX.md for details
+   */
   async handleMessage(message: DiscordMessage): Promise<void> {
     if (!(await this.shouldRespond(message))) {
       return;
     }
+
+    // PART E: Discord event deduplication (prevent duplicate event processing)
+    const guildId = message.guildId || null;
+    const channelId = message.channelId;
+    const messageId = message.id;
+    
+    if (discordEventRegistry.hasSeen(guildId, channelId, messageId)) {
+      console.log(`⚠️ Duplicate Discord event detected for message ${messageId}, ignoring`);
+      return;
+    }
+    discordEventRegistry.markSeen(guildId, channelId, messageId);
+
+    // Generate unique requestId for this message
+    const requestId = `msg_${message.id}`;
+    console.log(`📨 [${requestId}] Processing message from ${message.author.username}: "${message.content.substring(0, 50)}..."`);
+
+    // Cross-instance lock to avoid multiple bots responding to same message
+    const { acquired: lockAcquired, owner: lockOwner } = await acquireLock(message.id);
+    if (!lockAcquired) {
+      console.log(`⚠️ [${requestId}] Lock held by another instance (${lockOwner}), skipping response`);
+      return;
+    }
+
+    // Idempotency guard: Check if already processing this exact message
+    const request = requestRegistry.register(requestId);
+    if (!request) {
+      console.log(`⚠️ [${requestId}] Duplicate invocation detected - ignoring`);
+      await releaseLock(message.id).catch(() => {});
+      return; // Already in-flight
+    }
+
+    // Request context for logging and idempotent sends
+    const ctx = {
+      requestId,
+      discordMessageId: message.id,
+      channelId: message.channelId,
+      guildId: message.guildId || undefined,
+      userId: message.author.id,
+      instanceId: getInstanceId(),
+      personaSelected: 'emma' as string,
+      responded: false,
+      responseMessageId: null as string | null,
+      stage: 'ROUTING' as string,
+    };
 
     try {
       // Get channel context
@@ -143,11 +207,14 @@ export class MessageHandler {
         console.log(`🎭 No persona detected, will use channel default`);
       }
 
+      ctx.personaSelected = personaId || 'emma';
+      console.log(`🧭 [${requestId}] instance=${ctx.instanceId} persona=${ctx.personaSelected}`);
+
       // LOAD CONTEXT: Load isolated conversation history from file storage
-      // Guilds: guildId + channelId + userId, DMs: userId only
-      // Load isolated context via ContextService (no business logic here)
-      const fileContext = await this.contextService.load(userId, channelId, guildId);
-      console.log(`📂 Loaded file context: ${fileContext.length} messages for user ${userId}`);
+      // Guilds: guildId + channelId + userId + persona, DMs: userId + persona
+      // PART F: Persona isolation - each persona has separate context
+      const fileContext = await this.contextService.load(userId, channelId, guildId, ctx.personaSelected);
+      console.log(`📂 Loaded file context: ${fileContext.length} messages for user ${userId} persona ${ctx.personaSelected}`);
 
       // Build user message
       const userMessage: Message = {
@@ -202,9 +269,17 @@ export class MessageHandler {
       // Create progress tracker with animated spinner
       const workingEmbed = ResponseRenderer.createWorkingEmbed(message.content);
       const workingMessage = await message.reply({ embeds: [workingEmbed] });
+      console.log(`✓ [${requestId}] Created progress message ${workingMessage.id}`);
+      
+      // Register progress message ID in deduplication registry (jobId will be set later)
+      requestRegistry.setProgressMessageId(requestId, workingMessage.id);
+      
       const progressTracker = ResponseRenderer.createProgressTracker(workingMessage, message.content);
 
       try {
+        // Store job reference for later use (e.g., sending zip file)
+        let completedJob: Job | undefined;
+        
         // ROUTING STEP: Determine which model tier to use
         await progressTracker.addUpdate({
           stage: 'planning',
@@ -296,12 +371,16 @@ Current message: ${message.content}`
         );
 
         metadata.routingDecision = routingDecision;
-        const planningCallMetadata = plan.isFallback ? undefined : plan.metadata;
+        let planningCallMetadata = plan.isFallback ? undefined : plan.metadata;
 
         const hasExecutableActions = !plan.isFallback && plan.actions.some(action => action.type !== 'chat');
         console.log(`🔍 Has executable actions: ${hasExecutableActions}, isFallback: ${plan.isFallback}, actions:`, plan.actions.map(a => a.type));
         let executionResult: any = { results: [], hasImage: false };
         let execDuration = 0;
+        let promptImproverMetadata: LLMResponseMetadata | undefined;
+        let plannerMetadata: LLMResponseMetadata | undefined;
+        let codegenMetadata: LLMResponseMetadata | undefined;
+        const executionCallMetadata: LLMResponseMetadata[] = [];
 
         if (hasExecutableActions) {
           await progressTracker.addUpdate({
@@ -364,7 +443,7 @@ Current message: ${message.content}`
         if (executionResult.hasImage && executionResult.imageData) {
           updatedMetadata.llmMetadata = aggregateLLMMetadata(
             planningCallMetadata,
-            [],
+            executionCallMetadata,
             undefined
           );
           
@@ -451,6 +530,17 @@ Current message: ${message.content}`
           });
           console.log(`📋 Job created: ${job.jobId}`);
           
+          // PART E: Link job with progress message for single-message guarantee
+          requestRegistry.setProgressMessageId(requestId, workingMessage.id, job.jobId);
+          
+          // Update output directory to use logs structure
+          setJobOutputToLogsDir(
+            job,
+            message.author.username,
+            message.guild?.name || null,
+            (message.channel && 'name' in message.channel ? message.channel.name : null) || 'unknown'
+          );
+          
           // Create job directories and initialize logging
           ensureJobDirs(job);
           writeJobLog(job, `Coding request from user ${message.author.id}`);
@@ -458,142 +548,154 @@ Current message: ${message.content}`
           writeJobLog(job, `Project type: ${job.projectType}`);
           writeJobLog(job, `Router decision: ${JSON.stringify(projectDecision)}`);
           
-          // STEP 3: Run Prompt Improver (LLM Call #1)
-          markStageStart(job, 'prompt_improver');
+          // Direct cached generation
+          const codingModel = getCodegenModel();
+          const cachingAvailable = modelSupportsCaching(codingModel);
+          const enableCaching = process.env.OPENROUTER_PROMPT_CACHE !== '0';
+          const useCaching = cachingAvailable && enableCaching;
+          
+          job.diagnostics.pipeline = 'direct_cached';
+          job.diagnostics.cachingCapable = cachingAvailable;
+          
+          writeJobLog(job, `Pipeline: direct_cached`);
+          writeJobLog(job, `Caching: ${useCaching ? 'enabled' : 'disabled'}`);
+          writeJobLog(job, `Coding model: ${codingModel}`);
+          
+          console.log(`🚀 Using cached generation (caching: ${useCaching ? 'enabled' : 'disabled'})`);
+          
+          markStageStart(job, 'codegen_direct');
           await progressTracker.addUpdate({
             stage: 'responding',
-            message: 'Analyzing requirements and creating detailed specification...',
+            message: '💻 Generating code...',
+            details: 'Using preset prompts for generation',
             timestamp: Date.now(),
           });
           
           try {
-            await runPromptImprover(job, this.aiService);
-            updateJobStatus(job, 'planned');
-            markStageEnd(job, 'prompt_improver');
-            
-            console.log(`📝 Spec generated: "${job.spec?.title}"`);
-            console.log(`   Primary file: ${job.spec?.output.primaryFile}`);
-            console.log(`   Format: ${job.spec?.output.format}`);
-          } catch (error) {
-            writeJobLog(job, `Prompt improver failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            updateJobStatus(job, 'failed');
-            markStageEnd(job, 'prompt_improver');
-            throw error;
-          }
-          
-          // STEP 4: Run Planner (LLM Call #2)
-          markStageStart(job, 'planner');
-          await progressTracker.addUpdate({
-            stage: 'responding',
-            message: 'Creating execution plan...',
-            timestamp: Date.now(),
-          });
-          
-          try {
-            await runPlanner(job, this.aiService);
-            markStageEnd(job, 'planner');
-            
-            console.log(`📋 Plan generated: ${job.plan?.steps.length} steps`);
-            console.log(`   Files to generate: ${job.plan?.filePlan.length}`);
-            console.log(`   Build strategy: ${job.plan?.buildStrategy}`);
-          } catch (error) {
-            writeJobLog(job, `Planner failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            updateJobStatus(job, 'failed');
-            markStageEnd(job, 'planner');
-            throw error;
-          }
-          
-          // STEP 5: Run Code Generator (LLM Call #3)
-          markStageStart(job, 'codegen');
-          await progressTracker.addUpdate({
-            stage: 'responding',
-            message: 'Generating production-ready code...',
-            timestamp: Date.now(),
-          });
-          
-          try {
-            await runCodeGenerator(job, this.aiService);
+            codegenMetadata = await runDirectCachedCodegen(job, this.aiService, codingModel, async (message, details) => {
+              await progressTracker.addUpdate({
+                stage: 'responding',
+                message,
+                details,
+                timestamp: Date.now(),
+              });
+            });
             updateJobStatus(job, 'generated');
-            markStageEnd(job, 'codegen');
+            markStageEnd(job, 'codegen_direct');
             
-            console.log(`💻 Code generated: ${job.codegenResult?.files.length} files`);
+            console.log(`💻 Codegen complete: ${job.codegenResult?.files.length} files`);
             console.log(`   Notes: ${job.codegenResult?.notes}`);
-          } catch (error) {
-            writeJobLog(job, `Code generator failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-            updateJobStatus(job, 'failed');
-            markStageEnd(job, 'codegen');
-            
-            // Fallback to placeholders if codegen fails
-            console.log(`⚠ Codegen failed, using placeholder artifacts`);
-            markStageStart(job, 'artifact_generation');
-            const artifactFiles = writePlaceholderArtifacts(job);
-            console.log(`📁 Generated ${artifactFiles.length} placeholder files`);
-            markStageEnd(job, 'artifact_generation');
             
             markStageStart(job, 'output_copy');
             const copiedCount = copyWorkspaceToOutput(job);
             writeJobLog(job, `Copied ${copiedCount} files to output directory`);
             markStageEnd(job, 'output_copy');
             
+            await progressTracker.addUpdate({
+              stage: 'complete',
+              message: '✅ Code generation complete!',
+              details: `Generated ${job.codegenResult?.files.length} files • ${job.codegenResult?.notes}`,
+              timestamp: Date.now(),
+            });
+            
+            if (codegenMetadata) {
+              executionCallMetadata.push(codegenMetadata);
+            }
+          } catch (error) {
+            writeJobLog(job, `Codegen failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            updateJobStatus(job, 'failed');
+            markStageEnd(job, 'codegen_direct');
             throw error;
           }
           
-          // STEP 6: Mark job as done
           updateJobStatus(job, 'done');
           console.log(`✅ Job ${job.jobId} completed`);
           console.log(`   Workspace: ${job.paths.workspaceDir}`);
           console.log(`   Output: ${job.paths.outputDir}`);
           console.log(`   Logs: ${job.diagnostics.logsPath}`);
           
-          // STEP 7: TODO - Docker build/test (will be added later)
-          
-          // STEP 8: TODO - Deployer (will be added later)
-          // For static_html and node_project with previewAllowed=true
-          
-          // TEMPORARY: Use existing code generation for Discord response
+          // STEP 6.5: Create zip archive of all generated files
+          markStageStart(job, 'zip_archive');
           await progressTracker.addUpdate({
             stage: 'responding',
-            message: 'Formatting response...',
+            message: '📦 Packaging files...',
+            details: `Creating downloadable archive with ${job.codegenResult?.files.length || 0} files`,
             timestamp: Date.now(),
           });
           
-          // Extract ONLY user messages - NO persona/system prompts for coder
-          const userOnlyContext = conversation.recentMessages.filter((m: Message) => m.role === 'user');
-          
-          const codeResult = await this.codeImprover.improveCode(
-            message.content,
-            userOnlyContext,
-            routingDecision.modelId
-          );
-          
-          // Check for multi-file rejection
-          if (!codeResult.finalCode && codeResult.explanation.includes('multiple files')) {
-            finalResponse = codeResult.explanation;
-          } else {
-            // Generate persona wrapper message AFTER code generation
-            console.log('👤 Generating persona wrapper message...');
-            const smartModel = getTierConfig(ModelTier.SMART).modelId;
-            const wrapperMessage = await this.generateCodeWrapperMessage(
-              personaId || 'emma', // Fallback to emma if undefined
-              message.content,
-              smartModel // Use SMART tier model for wrapper
-            );
-            
-            // Structure: [Persona Message] + [Code]
-            finalResponse = wrapperMessage;
-            
-            // Add code with filename if provided
-            if (codeResult.explanation && codeResult.explanation.includes('Generated file:')) {
-              finalResponse = `${wrapperMessage}\n\n${codeResult.explanation}\n\n${codeResult.finalCode}`;
-            } else {
-              finalResponse = `${wrapperMessage}\n\n${codeResult.finalCode}`;
-            }
+          try {
+            const zipPath = await createZipArchive(job);
+            console.log(`📦 Zip created: ${zipPath}`);
+            job.zipPath = zipPath; // Store zip path in job for later use
+            markStageEnd(job, 'zip_archive');
+          } catch (error) {
+            writeJobLog(job, `Zip creation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            markStageEnd(job, 'zip_archive');
+            console.log(`⚠ Zip creation failed, continuing without archive`);
           }
           
-          // Use the single-call metadata as the response metadata
-          responseCallMetadata = codeResult.metadata;
+          // Store completed job for zip delivery
+          completedJob = job;
           
-          console.log('✅ Project routing complete (using legacy generator temporarily)');
+          // Format response based on project type
+          await progressTracker.addUpdate({
+            stage: 'responding',
+            message: '✅ Finalizing...',
+            details: 'Preparing download and instructions',
+            timestamp: Date.now(),
+          });
+          
+          const generatedFiles = job.codegenResult?.files || [];
+          const primaryFile = job.spec?.output.primaryFile || generatedFiles[0]?.path || 'index.html';
+          const filePreview = generatedFiles
+            .slice(0, 5)
+            .map(f => `• ${f.path} (${f.content.length} bytes)`) // brief preview
+            .join('\n');
+          
+          const instructions = (() => {
+            switch (job.projectType) {
+              case 'static_html':
+                return [
+                  'Unzip the attachment',
+                  `Open ${primaryFile} in your browser`,
+                  'Host on any static host (Netlify, Vercel, GitHub Pages)',
+                ];
+              case 'node_project':
+                return [
+                  'Unzip, then run `npm install`',
+                  'Use the generated run/dev/build scripts in package.json',
+                  'Set any required env vars from the README/spec before start',
+                ];
+              case 'discord_bot':
+                return [
+                  'Unzip, set DISCORD_TOKEN/CLIENT_ID in .env',
+                  'Run `npm install`, then `npm run dev` or `npm start`',
+                  'Invite the bot with the generated intents/scopes if provided',
+                ];
+              default:
+                return ['Download the zip and review the generated files'];
+            }
+          })();
+          
+          finalResponse = [
+            `**${job.spec?.title || 'Project'}** (${job.projectType})`,
+            `• Files generated: ${generatedFiles.length} | Primary: ${primaryFile}`,
+            job.codegenResult?.notes ? `• Notes: ${job.codegenResult.notes}` : null,
+            `• Zip: attached below${job.zipPath ? '' : ' (creation failed)'}`,
+            '',
+            '**Quick start**',
+            ...instructions.map(step => `- ${step}`),
+            '',
+            generatedFiles.length > 0 ? '**Files preview**' : null,
+            filePreview,
+          ]
+            .filter(Boolean)
+            .join('\n');
+          
+          // All CODING tier metadata is now in executionCallMetadata (spec, plan, codegen)
+          // No need to set responseCallMetadata or planningCallMetadata separately
+          console.log('✅ Project routing complete (zip + structured response)');
+          console.log(`   LLM calls: ${executionCallMetadata.length} (spec, plan, codegen)`);
         } else {
           // Non-CODING tiers: Use standard response generation
           const responseResult = await this.generateFinalResponseWithMetadata(
@@ -657,7 +759,7 @@ Current message: ${message.content}`
         // Aggregate all LLM metadata, including tool execution times
         updatedMetadata.llmMetadata = aggregateLLMMetadata(
           planningCallMetadata,
-          [],
+          executionCallMetadata,
           responseCallMetadata,
           executionResult.toolExecutions
         );
@@ -674,6 +776,64 @@ Current message: ${message.content}`
           rendered,
           progressTracker.getMessage()
         );
+        
+        // Mark that we've sent the final response
+        requestRegistry.setFinalResponseSent(requestId);
+        ctx.responded = true;
+        ctx.responseMessageId = sentMessage?.id || null;
+        console.log(`✓ [${requestId}] Final response delivered to user`);
+
+        // Send zip file if available (CODING tier only)
+        if (completedJob?.zipPath && sentMessage) {
+          try {
+            console.log(`📦 Sending zip file: ${completedJob.zipPath}`);
+            const zipAttachment = new AttachmentBuilder(completedJob.zipPath, {
+              name: `${completedJob.jobId}.zip`,
+            });
+            
+            const zipEmbed = new EmbedBuilder()
+              .setColor(0x00FF00)
+              .setTitle('📦 Project Files')
+              .setDescription(`Your generated project is ready for download!\n\n**Job ID:** \`${completedJob.jobId}\`\n**Project Type:** ${completedJob.projectType}\n**Files Generated:** ${completedJob.codegenResult?.files.length || 0}`)
+              .setFooter({ text: 'Extract the zip file to access your project' })
+              .setTimestamp();
+            
+            // Type guard for channels that support send()
+            if ('send' in message.channel) {
+              await message.channel.send({
+                embeds: [zipEmbed],
+                files: [zipAttachment],
+              });
+              console.log(`✅ Zip file sent successfully`);
+              
+              // Log code generation to logs folder
+              setImmediate(() => {
+                try {
+                  const guildName = message.guild?.name || null;
+                  const channelName = (message.channel as any).name || 'direct-message';
+                  const generatedFiles = completedJob.codegenResult?.files.map(f => f.path) || [];
+                  
+                  this.chatLogger.logCodeGeneration(
+                    message.content,
+                    completedJob.jobId,
+                    completedJob.projectType,
+                    `./generated/${completedJob.jobId}/`,
+                    generatedFiles,
+                    message.author.username,
+                    userId,
+                    guildName,
+                    channelName
+                  );
+                } catch (err) {
+                  // Logging failures must never affect bot behavior
+                }
+              });
+            }
+          } catch (error) {
+            console.error(`⚠ Failed to send zip file:`, error);
+            writeJobLog(completedJob, `Failed to send zip file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
+        }
 
         // PERSIST CONTEXT
         if (sentMessage && finalResponse && !finalResponse.includes('encountered an error')) {
@@ -705,7 +865,6 @@ Current message: ${message.content}`
           }
         }
 
-        // Track context for button interactions (always store context)
         if (sentMessage) {
           if (personaId) {
             this.promptManager.trackMessagePersona(sentMessage.id, personaId);
@@ -723,22 +882,64 @@ Current message: ${message.content}`
             personaId ? ` (persona: ${personaId})` : ''
           } with ${reportedActions.length} action(s)`
         );
+        
+        // SUCCESS: Mark request as finalized
+        console.log(`✓ [${requestId}] Request completed successfully`);
+        requestRegistry.finalize(requestId);
+        
       } catch (innerError) {
         // Handle errors with progress tracker
-        console.error('Error during processing:', innerError);
+        console.error(`✗ [${requestId}] Error during processing:`, innerError);
         const errorMsg = innerError instanceof Error ? innerError.message : 'Unknown error occurred';
-        await progressTracker.error('Processing failed', errorMsg);
         
-        // Give user time to see the error
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        // Check if already finalized (shouldn't happen, but defensive)
+        if (requestRegistry.isFinalized(requestId)) {
+          console.log(`⚠️ [${requestId}] Already finalized, skipping error display`);
+          return;
+        }
         
-        throw innerError; // Re-throw to be caught by outer catch
+        // Only show error if it's not a timeout or network issue during code gen
+        // Code generation can take 5-10 minutes, don't timeout prematurely
+        const isCodeGenTimeout = errorMsg.includes('timeout') || errorMsg.includes('ECONNRESET');
+        if (!isCodeGenTimeout) {
+          await progressTracker.error('Processing failed', errorMsg);
+          // Give user time to see the error
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          // Mark as finalized so outer catch doesn't send duplicate error
+          console.log(`✗ [${requestId}] Request failed, marked as finalized`);
+          requestRegistry.finalize(requestId);
+          // DON'T re-throw - we've already shown the error via progress tracker
+          return;
+        } else {
+          console.log(`⚠️ [${requestId}] Network hiccup during code generation, continuing...`);
+          // Don't throw, let it continue
+          return;
+        }
       }
     } catch (error) {
-      console.error('Error handling message:', error);
+      console.error(`✗ [${requestId}] Error handling message:`, error);
+      
+      // Check if we've already sent final response (success path completed)
+      if (requestRegistry.hasFinalResponse(requestId)) {
+        console.log(`⚠️ [${requestId}] Final response already sent, not sending error message`);
+        requestRegistry.finalize(requestId);
+        return;
+      }
+      
+      // Check if already finalized (error already shown via progress tracker)
+      if (requestRegistry.isFinalized(requestId)) {
+        console.log(`⚠️ [${requestId}] Already finalized, skipping duplicate error message`);
+        return;
+      }
+      
+      // Send user-facing error message (this is a true fatal error)
+      console.log(`✗ [${requestId}] Sending user-facing error message`);
       await message.reply(
         'Sorry, I encountered an error processing your message. Please try again later.'
-      );
+      ).catch(() => {/* Already replied or deleted */});
+      
+      // Mark as finalized
+      requestRegistry.finalize(requestId);
     }
   }
 
@@ -857,7 +1058,12 @@ You generated the code. Write a short, friendly message (1-3 sentences).`,
   private addCodingGuidance(messages: Message[]): Message[] {
     const guidanceMessage: Message = {
       role: 'system',
-      content: 'HTML/CSS/JS: Single file with inline <style> in <head>, <script> before </body>. Mobile: viewport meta, responsive (flex/grid), relative units, media queries. Brief explanations.'
+      content: `**CRITICAL INSTRUCTION**: For code generation requests, do NOT generate complete files or long code blocks.
+- Small snippets (≤10 lines, ≤200 chars) for illustration are OK
+- DO NOT create complete programs, HTML files, or large code blocks
+- Instead, ask the user to use the code generation feature: "I can help! Use \`/codegen\` or ask me directly about code with the code generation feature"
+- Redirect to code generation feature for any real projects
+- You are NOT authorized to generate code files - only discuss code briefly`
     };
     
     // Insert guidance before the last user message

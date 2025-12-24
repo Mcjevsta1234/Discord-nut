@@ -1,0 +1,80 @@
+.hero {
+  position: relative;
+  height: 100vh;
+  background-image: url("../assets/images/hero.jpg");
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: white;
+}
+
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(92, 139, 91, 0.4);
+}
+
+.hero-content {
+  position: relative;
+  z-index: 1;
+}
+
+.hero-title {
+  font-family: var(--font-header);
+  font-size: 3rem;
+  margin: 0 0 12px;
+  opacity: 0;
+  animation: fadeIn 1.2s forwards;
+}
+
+.hero-subtitle {
+  font-size: 1.2rem;
+  margin: 0 0 24px;
+  opacity: 0;
+  animation: fadeIn 1.2s 0.2s forwards;
+}
+
+.btn-primary {
+  display: inline-block;
+  padding: 12px 24px;
+  background: var(--accent-green);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+  background: #4a754a;
+  outline: none;
+}
+
+.btn-primary:active {
+  transform: translateY(1px);
+}
+
+@keyframes fadeIn {
+  to { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-title, .hero-subtitle {
+    animation: none;
+    opacity: 1;
+  }
+}
+
+@media (max-width: 600px) {
+  .hero-title {
+    font-size: 2rem;
+  }
+  .hero-subtitle {
+    font-size: 1rem;
+  }
+}

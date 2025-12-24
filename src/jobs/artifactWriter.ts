@@ -7,6 +7,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import archiver from 'archiver';
+import extract from 'extract-zip';
 import { Job, ProjectType } from './types';
 import { safeWriteFile, safeCopyFile, writeJobLog } from './jobManager';
 
@@ -192,4 +194,68 @@ export function listOutputFiles(job: Job): string[] {
   }
 
   return files;
+}
+
+/**
+ * Create a zip file of the output directory
+ */
+export async function createZipArchive(job: Job): Promise<string> {
+  const zipPath = path.join(job.paths.workspaceDir, `${job.jobId}.zip`);
+  
+  return new Promise((resolve, reject) => {
+    const output = fs.createWriteStream(zipPath);
+    const archive = archiver('zip', { zlib: { level: 9 } });
+
+    output.on('close', () => {
+      writeJobLog(job, `Created zip archive: ${zipPath} (${archive.pointer()} bytes)`);
+      resolve(zipPath);
+    });
+
+    archive.on('error', (err: Error) => {
+      reject(err);
+    });
+
+    archive.pipe(output);
+    archive.directory(job.paths.outputDir, false);
+    archive.finalize();
+  });
+}
+
+/**
+ * Extract a zip archive to a target directory
+ */
+export async function extractZipArchive(zipPath: string, targetDir: string): Promise<void> {
+  // Ensure target directory exists
+  fs.mkdirSync(targetDir, { recursive: true });
+  
+  // Extract zip
+  await extract(zipPath, { dir: path.resolve(targetDir) });
+}
+
+/**
+ * Save all generated files to a local directory
+ * Returns the path to the saved directory
+ */
+export async function saveFilesLocally(job: Job, localBaseDir: string = './output-local'): Promise<string> {
+  const localDir = path.join(localBaseDir, job.jobId);
+  
+  // Create local directory
+  fs.mkdirSync(localDir, { recursive: true });
+  
+  // Copy all files from output directory to local directory
+  const files = fs.readdirSync(job.paths.outputDir);
+  let copiedCount = 0;
+  
+  for (const file of files) {
+    const sourcePath = path.join(job.paths.outputDir, file);
+    const destPath = path.join(localDir, file);
+    
+    if (fs.statSync(sourcePath).isFile()) {
+      fs.copyFileSync(sourcePath, destPath);
+      copiedCount++;
+    }
+  }
+  
+  writeJobLog(job, `Saved ${copiedCount} files to local directory: ${localDir}`);
+  return localDir;
 }
