@@ -1,0 +1,11 @@
+{
+  "comment": "Manual overrides for matching OpenRouter model IDs to llm-stats benchmark model names",
+  "overrides": {
+    "mistralai/devstral-2512:free": "devstral-2412",
+    "kwaipilot/kat-coder-pro:free": "kat-coder-pro",
+    "qwen/qwen3-coder:free": "qwen-2.5-coder-32b-instruct",
+    "qwen/qwen-2.5-coder-32b-instruct:free": "qwen-2.5-coder-32b-instruct",
+    "deepseek/deepseek-chat-free": "deepseek-v3",
+    "google/gemini-2.0-flash-exp:free": "gemini-2.0-flash-exp"
+  }
+}

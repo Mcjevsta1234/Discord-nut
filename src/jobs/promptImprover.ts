@@ -8,7 +8,7 @@
 import * as path from 'path';
 import { Job, ImprovedSpec, ProjectType } from './types';
 import { writeJobLog, safeWriteFile } from './jobManager';
-import { OpenRouterService } from '../ai/openRouterService';
+import { OpenRouterService } from '../llm/openRouterService';
 
 /**
  * Get the model to use for prompt improvement (configurable via env)

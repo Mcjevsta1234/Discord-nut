@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Discord-nut Documentation</title>
+  <style>
+    :root {
+      --bg: #0b1220;
+      --card: rgba(255, 255, 255, 0.05);
+      --card-strong: rgba(255, 255, 255, 0.08);
+      --text: #e9eef7;
+      --muted: #a2acc4;
+      --accent: #8ef3c5;
+      --accent-2: #7cc0ff;
+      --border: rgba(255, 255, 255, 0.08);
+      --mono: "JetBrains Mono", "Fira Code", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      --sans: "Space Grotesk", "Sora", "Manrope", "Segoe UI", sans-serif;
+      --shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f6f8fb;
+        --card: rgba(15, 23, 42, 0.04);
+        --card-strong: rgba(15, 23, 42, 0.08);
+        --text: #0f172a;
+        --muted: #475569;
+        --border: rgba(15, 23, 42, 0.08);
+        --shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+      }
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 32px;
+      background: radial-gradient(circle at 20% 20%, rgba(126, 213, 234, 0.14), transparent 28%),
+                  radial-gradient(circle at 80% 10%, rgba(142, 243, 197, 0.18), transparent 32%),
+                  radial-gradient(circle at 50% 70%, rgba(124, 192, 255, 0.14), transparent 38%),
+                  var(--bg);
+      color: var(--text);
+      font-family: var(--sans);
+      line-height: 1.6;
+    }
+
+    h1, h2, h3 { margin: 0 0 12px; letter-spacing: -0.01em; }
+    p { margin: 0 0 12px; color: var(--muted); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 16px;
+      align-items: start;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 20px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(8px);
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .title-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .tag {
+      padding: 6px 10px;
+      background: var(--card-strong);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    code, pre {
+      font-family: var(--mono);
+    }
+
+    pre {
+      background: var(--card-strong);
+      border-radius: 10px;
+      padding: 12px;
+      border: 1px solid var(--border);
+      overflow-x: auto;
+      margin: 0 0 12px;
+      color: var(--text);
+    }
+
+    ul { margin: 0 0 12px 18px; color: var(--muted); }
+    ul li { margin-bottom: 6px; }
+
+    .pill-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+    .pill { padding: 6px 10px; border-radius: 999px; background: var(--card-strong); border: 1px solid var(--border); font-size: 13px; color: var(--muted); }
+
+    .section-title { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .badge { font-size: 12px; padding: 4px 8px; border-radius: 8px; background: var(--card-strong); border: 1px solid var(--border); color: var(--muted); }
+
+    a { color: var(--accent-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    @media (max-width: 640px) {
+      body { padding: 20px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero card">
+    <div class="title-row">
+      <h1>Discord-nut</h1>
+      <span class="tag">Discord + OpenRouter</span>
+      <span class="tag">TypeScript</span>
+      <span class="tag">LLM Router</span>
+    </div>
+    <p>A streamlined Discord bot with OpenRouter-backed chat, tool execution, image generation, and a console mode. This page condenses everything you need to set up, run, and operate the bot.</p>
+    <div class="pill-row">
+      <span class="pill">Smart triggers</span>
+      <span class="pill">Tool planning</span>
+      <span class="pill">Model tiers</span>
+      <span class="pill">Console mode</span>
+      <span class="pill">Cost awareness</span>
+      <span class="pill">Image generation ready</span>
+    </div>
+  </header>
+
+  <section class="grid">
+    <div class="card">
+      <div class="section-title">
+        <h2>Quick Start</h2><span class="badge">Setup</span>
+      </div>
+      <pre>npm install
+cp .env.example .env
+# fill DISCORD_TOKEN, DISCORD_CLIENT_ID, OPENROUTER_API_KEY
+npm run dev   # hot reload
+npm run build && npm start  # production</pre>
+      <p><strong>Node.js</strong>: 16+ recommended. The bot responds when mentioned, replied to, or when its name appears.</p>
+    </div>
+
+    <div class="card">
+      <div class="section-title">
+        <h2>Run Modes</h2><span class="badge">Discord & Console</span>
+      </div>
+      <ul>
+        <li><strong>Discord</strong>: <code>npm run dev</code> (or <code>npm start</code> after build)</li>
+        <li><strong>Console-only</strong>: <code>npm run console</code> or <code>npm start -- --console</code></li>
+        <li><strong>Hybrid (Discord + Console)</strong>: <code>npm start -- --hybrid</code></li>
+      </ul>
+      <p>Commands (console): /help, /personas, /persona &lt;name&gt;, /clear, /exit.</p>
+    </div>
+
+    <div class="card">
+      <div class="section-title">
+        <h2>Key Features</h2><span class="badge">Behavior</span>
+      </div>
+      <ul>
+        <li>LLM routing across tiers (INSTANT/SMART/THINKING/CODING)</li>
+        <li>Action planning + tool execution (MCP tools included)</li>
+        <li>Conversation memory with summarization</li>
+        <li>Image generation hooks preserved (OpenRouter models)</li>
+        <li>Cost tracking per message when enabled</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="section-title">
+        <h2>Environment</h2><span class="badge">.env</span>
+      </div>
+      <ul>
+        <li><code>DISCORD_TOKEN</code>, <code>DISCORD_CLIENT_ID</code> (required for Discord)</li>
+        <li><code>OPENROUTER_API_KEY</code> (required)</li>
+        <li><code>MODEL_INSTANT</code>, <code>MODEL_SMART</code>, <code>MODEL_THINKING</code>, <code>MODEL_CODING</code></li>
+        <li><code>MODEL_*_INPUT_PRICE</code>, <code>MODEL_*_OUTPUT_PRICE</code> for cost tracking</li>
+        <li><code>CONSOLE_MODE</code> or <code>HYBRID_MODE</code> to change launch mode</li>
+        <li><code>IMAGE_MODEL</code>, <code>IMAGE_DEFAULT_WIDTH</code>, <code>IMAGE_DEFAULT_HEIGHT</code> for image generation</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="section-title">
+        <h2>Commands & Triggers</h2><span class="badge">Discord</span>
+      </div>
+      <ul>
+        <li>Responds to mentions, replies, or name mentions in-channel.</li>
+        <li>Personas: set via prompt cues; console mode offers explicit <code>/persona</code>.</li>
+        <li>Memory: keeps recent turns; summarizes older context to stay within token budget.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <div class="section-title">
+        <h2>Troubleshooting</h2><span class="badge">Tips</span>
+      </div>
+      <ul>
+        <li>Bot silent? Check intents & permissions; ensure required env vars are set.</li>
+        <li>OpenRouter 401? Verify API key and quota.</li>
+        <li>Build errors? Remove <code>dist</code>, reinstall deps, run <code>npm run build</code>.</li>
+        <li>Image failures? Confirm <code>IMAGE_MODEL</code> exists on OpenRouter.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="card" style="margin-top:16px;">
+    <div class="section-title">
+      <h2>Project Map</h2><span class="badge">High Level</span>
+    </div>
+    <ul>
+      <li><strong>Entry</strong>: <code>src/index.ts</code> (Discord) · <code>src/console-mode.ts</code> (Console)</li>
+      <li><strong>LLM</strong>: <code>src/llm/</code> (routing, planner, executor, presets)</li>
+      <li><strong>Memory</strong>: <code>src/memory/</code> (conversation storage and summaries)</li>
+      <li><strong>Discord</strong>: <code>src/discord/</code> (client, message handler, renderer)</li>
+      <li><strong>Config</strong>: <code>src/config/</code> (env validation, routing)</li>
+      <li><strong>Jobs</strong>: <code>src/jobs/</code> (codegen utilities)</li>
+    </ul>
+  </section>
+</body>
+</html>

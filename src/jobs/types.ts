@@ -5,7 +5,7 @@
  * No LLM, Docker, or deployment logic here - just data structures.
  */
 
-import { LLMResponseMetadata } from '../ai/llmMetadata';
+import { LLMResponseMetadata } from '../llm/llmMetadata';
 
 export type ProjectType = 'static_html' | 'node_project' | 'discord_bot';
 
@@ -22,7 +22,7 @@ export type JobStatus =
 /**
  * PART C: Pipeline type - determines LLM call strategy
  */
-export type PipelineType = '3_stage' | 'direct_cached';
+export type PipelineType = '3_stage' | 'direct_cached' | 'direct';
 
 export interface JobInput {
   userMessage: string;

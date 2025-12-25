@@ -1,21 +1,21 @@
 import { Message as DiscordMessage, Client, AttachmentBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
-import { OpenRouterService, Message } from '../ai/openRouterService';
-import { MemoryManager } from '../ai/memoryManager';
-import { ContextService } from '../ai/contextService';
-import { FileContextManager } from '../ai/fileContextManager';
+import { OpenRouterService, Message } from '../llm/openRouterService';
+import { MemoryManager } from '../memory/memoryManager';
+import { ContextService } from '../memory/contextService';
+import { FileContextManager } from '../memory/fileContextManager';
 import { PromptManager } from './promptManager';
-import { ActionExecutor } from '../ai/actionExecutor';
+import { ActionExecutor } from '../llm/actionExecutor';
 import { MCPToolResult } from '../mcp';
 import { ResponseRenderer, ResponseMetadata, ProgressTracker } from './responseRenderer';
-import { aggregateLLMMetadata, LLMResponseMetadata } from '../ai/llmMetadata';
-import { RouterService } from '../ai/routerService';
-import { RoutingDecision } from '../ai/modelTiers';
+import { aggregateLLMMetadata, LLMResponseMetadata } from '../llm/llmMetadata';
+import { RouterService } from '../llm/routerService';
+import { RoutingDecision } from '../llm/modelTiers';
 import { getTierConfig } from '../config/routing';
-import { ChatLogger } from '../ai/chatLogger';
-import { ProjectRouter, ProjectRoutingDecision } from '../ai/projectRouter';
+import { ChatLogger } from '../llm/chatLogger';
+import { ProjectRouter, ProjectRoutingDecision } from '../llm/projectRouter';
 import { requestRegistry, discordEventRegistry } from './requestDeduplication';
 import { acquireLock, releaseLock, getInstanceId } from './requestLockManager';
-import { Planner, ActionPlan } from '../ai/planner';
+import { Planner, ActionPlan } from '../llm/planner';
 import {
   createJob,
   setJobOutputToLogsDir,
@@ -25,12 +25,11 @@ import {
   markStageEnd,
   updateJobStatus,
   copyWorkspaceToOutput,
-  runDirectCachedCodegen,
   createZipArchive,
   Job,
 } from '../jobs';
-import { getCodegenModel } from '../jobs/directCachedCoder';
-import { modelSupportsCaching } from '../ai/modelCaps';
+import { generateCode as runDirectCachedCodegen, getCodegenModel } from '../jobs/codegen';
+import { modelSupportsCaching } from '../llm/modelCaps';
 
 interface MessageContext {
   userContent: string;
@@ -310,7 +309,10 @@ export class MessageHandler {
 Current message: ${message.content}`
           : message.content;
         
-        const plannerNeeded = routingDecision.tier === 'INSTANT'
+        // CODING tier: Skip planner entirely - go straight to codegen
+        const plannerNeeded = routingDecision.tier === 'CODING'
+          ? false
+          : routingDecision.tier === 'INSTANT'
           ? true
           : this.shouldUsePlanner(messageWithContext);
         
@@ -898,23 +900,37 @@ Current message: ${message.content}`
           return;
         }
         
-        // Only show error if it's not a timeout or network issue during code gen
-        // Code generation can take 5-10 minutes, don't timeout prematurely
-        const isCodeGenTimeout = errorMsg.includes('timeout') || errorMsg.includes('ECONNRESET');
-        if (!isCodeGenTimeout) {
-          await progressTracker.error('Processing failed', errorMsg);
-          // Give user time to see the error
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          // Mark as finalized so outer catch doesn't send duplicate error
-          console.log(`✗ [${requestId}] Request failed, marked as finalized`);
-          requestRegistry.finalize(requestId);
-          // DON'T re-throw - we've already shown the error via progress tracker
-          return;
+        // Format error nicely for user
+        let userFacingError = errorMsg;
+        
+        // Check if error already has emoji/formatting (from OpenRouter service)
+        if (errorMsg.includes('**') || errorMsg.includes('⏱️') || errorMsg.includes('💳') || errorMsg.includes('⚠️')) {
+          userFacingError = errorMsg;
         } else {
-          console.log(`⚠️ [${requestId}] Network hiccup during code generation, continuing...`);
-          // Don't throw, let it continue
-          return;
+          // Add formatting if plain error message
+          if (errorMsg.includes('timeout') || errorMsg.includes('ECONNRESET')) {
+            userFacingError = `⏱️ **Request Timeout**\n\nThe AI provider took too long to respond. This can happen during complex code generation.\n\nPlease try again or simplify your request.`;
+          } else if (errorMsg.includes('rate limit') || errorMsg.includes('Too Many Requests')) {
+            userFacingError = `⏱️ **Rate Limit Reached**\n\nThe AI provider is receiving too many requests. Please try again in a few moments.`;
+          } else if (errorMsg.includes('Failed to parse JSON')) {
+            userFacingError = `⚠️ **Generation Error**\n\nThe AI generated invalid output. This is a temporary issue.\n\n**What you can do:**\n• Try rephrasing your request\n• Be more specific about what you want\n• Try again in a moment`;
+          } else {
+            userFacingError = `❌ **Something Went Wrong**\n\n${errorMsg}\n\nPlease try again or contact support if this persists.`;
+          }
         }
+        
+        // Show error via progress tracker
+        await progressTracker.error('Processing failed', userFacingError);
+        
+        // Give user time to see the error
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Mark as finalized so outer catch doesn't send duplicate error
+        console.log(`✗ [${requestId}] Request failed, marked as finalized`);
+        requestRegistry.finalize(requestId);
+        
+        // DON'T re-throw - we've already shown the error via progress tracker
+        return;
       }
     } catch (error) {
       console.error(`✗ [${requestId}] Error handling message:`, error);
@@ -1061,8 +1077,8 @@ You generated the code. Write a short, friendly message (1-3 sentences).`,
       content: `**CRITICAL INSTRUCTION**: For code generation requests, do NOT generate complete files or long code blocks.
 - Small snippets (≤10 lines, ≤200 chars) for illustration are OK
 - DO NOT create complete programs, HTML files, or large code blocks
-- Instead, ask the user to use the code generation feature: "I can help! Use \`/codegen\` or ask me directly about code with the code generation feature"
-- Redirect to code generation feature for any real projects
+- Instead, tell the user that full code generation is handled automatically by the system
+- Redirect to using natural language: "Just describe what you want to build and I'll generate it!"
 - You are NOT authorized to generate code files - only discuss code briefly`
     };
     
@@ -1111,21 +1127,6 @@ You generated the code. Write a short, friendly message (1-3 sentences).`,
       'www.',
       'url',
       'link please',
-      'image',
-      'picture',
-      'photo',
-      'generate',
-      'create',
-      'draw',
-      'make an',
-      'show me a',
-      'paint',
-      'sketch',
-      'render',
-      'visualize',
-      'visualise',
-      'illustration',
-      'artwork',
       'minecraft',
       'mc network',
       'mc server',
@@ -1169,9 +1170,8 @@ You generated the code. Write a short, friendly message (1-3 sentences).`,
       return true;
     }
 
-    if (/(generate|create|draw|render).*(image|logo|icon|picture|art|banner|scene)/.test(normalized)) {
-      return true;
-    }
+    // Image generation now handled via /imagine slash command only
+    // Removed pattern to prevent false positives with coding requests
 
     if (/(latest|current|today|recent)\s+(price|prices|status|release|version|weather|forecast|numbers?)/.test(normalized)) {
       return true;

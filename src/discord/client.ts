@@ -1,8 +1,8 @@
 import { Client, GatewayIntentBits, Events, PermissionsBitField } from 'discord.js';
 import { config } from '../config';
 import { MessageHandler } from './messageHandler';
-import { OpenRouterService } from '../ai/openRouterService';
-import { MemoryManager } from '../ai/memoryManager';
+import { OpenRouterService } from '../llm/openRouterService';
+import { MemoryManager } from '../memory/memoryManager';
 import { PromptManager } from './promptManager';
 import { AdminCommandHandler } from './adminCommands';
 import { MCPClient, registerDefaultTools } from '../mcp';
@@ -45,7 +45,8 @@ export class DiscordBot {
 
     this.adminCommands = new AdminCommandHandler(
       this.client,
-      this.promptManager
+      this.promptManager,
+      this.aiService
     );
 
     this.setupEventHandlers();

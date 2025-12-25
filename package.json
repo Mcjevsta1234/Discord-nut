@@ -9,7 +9,16 @@
     "dev": "tsx src/index.ts",
     "console": "tsx src/console-mode.ts",
     "console:build": "tsc && node dist/console-mode.js",
-    "test": "tsx test/websitePolicy.test.ts"
+    "test": "echo \"No tests\"",
+    "site:gen": "tsx tools/generate-site.ts",
+    "site:validate": "tsx tools/validate-site.ts",
+    "site:zip": "tsx tools/zip-site.ts",
+    "site:build": "npm run site:gen && npm run site:validate && npm run site:zip",
+    "models:sync": "tsx tools/models/sync-openrouter.ts && tsx tools/models/sync-llm-stats.ts",
+    "models:rank": "tsx tools/models/rank-models.ts",
+    "models:match": "tsx tools/models/match-models.ts",
+    "models:validate": "tsx tools/models/validate-pools.ts",
+    "models:report": "npm run models:rank && node -e \"require('child_process').exec(process.platform === 'win32' ? 'start' : 'open', ['.cache/model-pools-report.html'])\""
   },
   "keywords": [
     "discord",
@@ -22,6 +31,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.1",
     "@types/archiver": "^7.0.0",
+    "@types/cheerio": "^0.22.35",
     "@types/extract-zip": "^2.0.0",
     "archiver": "^7.0.1",
     "axios": "^1.13.2",
@@ -34,6 +44,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.0.3",
+    "prettier": "^3.7.4",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }

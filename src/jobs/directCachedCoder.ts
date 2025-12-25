@@ -10,12 +10,12 @@
 import * as path from 'path';
 import { Job, CodegenResult, ProjectType } from './types';
 import { writeJobLog, safeWriteFile } from './jobManager';
-import { OpenRouterService, buildCachedMessage } from '../ai/openRouterService';
-import { LLMResponseMetadata } from '../ai/llmMetadata';
-import { getPresetForProjectType, isWebProject } from '../ai/presets';
+import { OpenRouterService, buildCachedMessage } from '../llm/openRouterService';
+import { LLMResponseMetadata } from '../llm/llmMetadata';
+import { getPresetForProjectType, isWebProject } from '../llm/presets';
 
 export function getCodegenModel(): string {
-  return process.env.CODEGEN_MODEL || 'google/gemini-3-flash-preview';
+  return process.env.CODEGEN_MODEL || 'kwaipilot/kat-coder-pro:free';
 }
 
 const MAX_FILES = 60;
@@ -101,6 +101,60 @@ function validateCodegenResult(parsed: any): ValidationOutcome {
 }
 
 /**
+ * Repair invalid backslash escapes in JSON strings
+ * Fixes common issues like \m, \_, \: by converting them to \\
+ */
+function repairInvalidBackslashes(jsonText: string): string {
+  let out = '';
+  let inStr = false;
+  let esc = false;
+  
+  for (let i = 0; i < jsonText.length; i++) {
+    const c = jsonText[i];
+    
+    if (!inStr) {
+      if (c === '"') inStr = true;
+      out += c;
+      continue;
+    }
+    
+    // Inside string
+    if (esc) {
+      // This char is escaped; just emit and clear esc flag
+      out += c;
+      esc = false;
+      continue;
+    }
+    
+    if (c === '\\') {
+      const next = jsonText[i + 1] ?? '';
+      const validEscape = next === '"' || next === '\\' || next === '/' || 
+                          next === 'b' || next === 'f' || next === 'n' || 
+                          next === 'r' || next === 't' || next === 'u';
+      
+      if (!validEscape) {
+        // Invalid escape: repair by doubling the backslash
+        out += '\\\\';
+      } else {
+        out += c;
+        esc = true;
+      }
+      continue;
+    }
+    
+    if (c === '"') {
+      inStr = false;
+      out += c;
+      continue;
+    }
+    
+    out += c;
+  }
+  
+  return out;
+}
+
+/**
  * Robust JSON parser for LLM responses - handles markdown blocks, trailing commas, extra text
  */
 function parseCodegenResponse(raw: string): CodegenResult {
@@ -124,23 +178,39 @@ function parseCodegenResponse(raw: string): CodegenResult {
   // Remove trailing commas before closing braces/brackets
   jsonStr = jsonStr.replace(/,\s*([\}\]])/g, '$1');
   
-  // Step 4: Try to parse - if it fails, try to fix and parse again
+  // Step 4: Try to parse - if it fails, use repair strategies
   let parsed: any;
   try {
     parsed = JSON.parse(jsonStr);
   } catch (firstError) {
-    // Try alternative parsing with relaxed JSON (allow trailing commas, comments)
-    try {
-      // Remove comments
-      let cleaned = jsonStr.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
-      
-      // Fix unescaped newlines in strings (common LLM mistake)
-      // This is tricky - we need to find strings and escape newlines within them
-      // For now, just try parsing and if it fails, give up
-      
-      parsed = JSON.parse(cleaned);
-    } catch (secondError) {
-      throw new Error(`Failed to parse JSON: ${firstError instanceof Error ? firstError.message : 'Unknown error'}. Raw response length: ${raw.length} chars. Try position ${(firstError as any).message?.match(/position (\d+)/)?.[1] || 'unknown'}`);
+    const firstErrorMsg = firstError instanceof Error ? firstError.message : '';
+    
+    // If error is about bad escaped characters, try repair
+    if (firstErrorMsg.includes('Bad escaped character') || firstErrorMsg.includes('Unexpected token') || firstErrorMsg.includes('escape')) {
+      try {
+        console.log('⚠️ JSON parse failed with escape error, attempting repair...');
+        const repaired = repairInvalidBackslashes(jsonStr);
+        parsed = JSON.parse(repaired);
+        console.log('✓ JSON repair successful');
+      } catch (repairError) {
+        // Repair failed, try fallback
+        try {
+          let cleaned = jsonStr.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
+          cleaned = cleaned.replace(/\\(?!["\\\/ bfnrtu])/g, '\\\\');
+          parsed = JSON.parse(cleaned);
+        } catch (secondError) {
+          throw new Error(`Failed to parse JSON after repair: ${firstErrorMsg}. Raw response length: ${raw.length} chars.`);
+        }
+      }
+    } else {
+      // Other error, try fallback
+      try {
+        let cleaned = jsonStr.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*/g, '');
+        cleaned = cleaned.replace(/\\(?!["\\\/ bfnrtu])/g, '\\\\');
+        parsed = JSON.parse(cleaned);
+      } catch (secondError) {
+        throw new Error(`Failed to parse JSON: ${firstErrorMsg}. Raw response length: ${raw.length} chars.`);
+      }
     }
   }
   
@@ -208,10 +278,18 @@ Return ONLY the JSON object (no markdown, no explanation).`;
   writeJobLog(job, `Cached blocks: ${cachedBlocks.length}, total length: ${cachedBlocks.join('').length} chars`);
   writeJobLog(job, `User request length: ${userRequest.length} chars`);
 
+  // Check if model supports reasoning (minimax, deepseek, gemini, gpt, glm, etc)
+  const supportsReasoning = model.includes('minimax') || model.includes('deepseek-r1') || model.includes('gemini') || model.includes('gpt') || model.includes('glm');
+  
+  if (supportsReasoning) {
+    writeJobLog(job, `Model ${model} supports reasoning - enabling reasoning mode`);
+  }
+
   // Call LLM (single shot with caching)
   const response = await aiService.chatCompletionWithMetadata(messages, model, {
     temperature: 0.3,
     max_tokens: 128000,
+    ...(supportsReasoning && { reasoning: { enabled: true } }),
   });
 
   writeJobLog(job, `Received codegen response: ${response.content.length} chars`);

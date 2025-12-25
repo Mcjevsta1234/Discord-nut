@@ -10,13 +10,22 @@
  */
 
 import { EmbedBuilder, Message as DiscordMessage, ActionRowBuilder, ButtonBuilder, ButtonStyle, TextBasedChannel } from 'discord.js';
-import { PlannedAction, ActionPlan } from '../ai/planner';
-import { ActionResult, ExecutionResult } from '../ai/actionExecutor';
-import { AggregatedLLMMetadata, LLMResponseMetadata } from '../ai/llmMetadata';
-import { RoutingDecision } from '../ai/modelTiers';
+import { PlannedAction, ActionPlan } from '../llm/planner';
+import { ActionResult, ExecutionResult } from '../llm/actionExecutor';
+import { AggregatedLLMMetadata, LLMResponseMetadata } from '../llm/llmMetadata';
+import { RoutingDecision } from '../llm/modelTiers';
 import { getTierConfig } from '../config/routing';
 import { DebugMode, DebugSection, shouldShowSection, getDebugMode } from './debugMode';
 import { FileAttachmentHandler, FileContent } from './fileAttachments';
+
+/**
+ * Editable message interface for ProgressTracker
+ * Supports both regular Messages and interaction replies
+ */
+export interface EditableMessage {
+  edit: (options: any) => Promise<any>;
+  delete?: () => Promise<any>;
+}
 
 /**
  * Progress tracking for live UX updates
@@ -36,7 +45,7 @@ export interface ProgressUpdate {
  * Progress tracker for managing animated indicators and incremental updates
  */
 export class ProgressTracker {
-  private message: DiscordMessage;
+  private message: EditableMessage;
   private embed: EmbedBuilder;
   private updates: ProgressUpdate[] = [];
   private updateInterval?: NodeJS.Timeout;
@@ -44,30 +53,35 @@ export class ProgressTracker {
   // Simple spinner loader
   private spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
   private lastUpdateTime = 0;
-  private minUpdateInterval = 1000; // Discord rate limit: max 5 edits per 5 seconds = 1 per second
+  private minUpdateInterval = 650; // FAST: 650ms (Discord allows 5 edits per 5s = 1000ms each, but we can push it a bit)
   private isClosed = false;
   private pendingUpdate = false;
   
-  // Snake game state
-  private snakeX = 5;
-  private snakeY = 3;
-  private snakeBody: Array<{x: number, y: number}> = [{x: 5, y: 3}, {x: 4, y: 3}, {x: 3, y: 3}];
-  private appleX = 12;
-  private appleY = 3;
+  // Snake game state - LARGER BOARD
+  private snakeX = 8;
+  private snakeY = 5;
+  private snakeBody: Array<{x: number, y: number}> = [{x: 8, y: 5}, {x: 7, y: 5}, {x: 6, y: 5}, {x: 5, y: 5}]; // Longer initial snake
+  private appleX = 18;
+  private appleY = 5;
   private direction = 1; // 0=up, 1=right, 2=down, 3=left
   private score = 0;
-  private readonly gameWidth = 20;
-  private readonly gameHeight = 7;
+  private readonly gameWidth = 28; // Wider board (was 20)
+  private readonly gameHeight = 9; // Taller board (was 7)
 
-  constructor(message: DiscordMessage, initialEmbed: EmbedBuilder) {
+  constructor(message: EditableMessage, initialEmbed: EmbedBuilder) {
     this.message = message;
     this.embed = initialEmbed;
     this.startAnimatedSpinner();
+    // Trigger immediate display so loader appears instantly
+    void this.updateDisplay(true).catch(() => {
+      // Silently handle initial display errors
+    });
   }
 
   /**
    * Start animated spinner that updates periodically
-   * Uses 1.5s interval to stay well within Discord's rate limits (5 edits per 5 seconds)
+   * Uses 550ms check interval for snappy feel (actual updates limited by minUpdateInterval)
+   * HACK: Check frequently but rate-limit actual Discord API calls to avoid 429s
    */
   private startAnimatedSpinner(): void {
     this.updateInterval = setInterval(async () => {
@@ -101,7 +115,7 @@ export class ProgressTracker {
       } finally {
         this.pendingUpdate = false;
       }
-    }, 1000); // Check every 1 second, matching our minimum interval
+    }, 550); // HACK: Check frequently, actual updates rate-limited by minUpdateInterval
   }
 
   /**
@@ -125,7 +139,12 @@ export class ProgressTracker {
     // Force immediate update for important stages
     const forceUpdate = update.stage === 'error' || update.stage === 'complete';
     if (forceUpdate) {
-      await this.updateDisplay(true);
+      try {
+        await this.updateDisplay(true);
+      } catch (error) {
+        // Swallow display errors - updates are stored, display is best-effort
+        console.warn('[ProgressTracker] Failed to display update, continuing:', error instanceof Error ? error.message : 'Unknown error');
+      }
     }
   }
 
@@ -158,9 +177,14 @@ export class ProgressTracker {
 
       await this.message.edit({ embeds: [this.embed] });
       this.lastUpdateTime = now;
-    } catch (error) {
-      // Message might have been deleted
-      this.stopAnimatedSpinner();
+    } catch (error: any) {
+      // Only stop spinner if message is truly deleted (404/Unknown Message)
+      // Don't stop on rate limits (429) or transient errors
+      if (error?.code === 10008 || error?.message?.includes('Unknown Message')) {
+        console.error('[ProgressTracker] Message deleted, stopping spinner');
+        this.stopAnimatedSpinner();
+      }
+      // Otherwise, keep trying (rate limits will resolve)
     }
   }
 
@@ -215,7 +239,7 @@ export class ProgressTracker {
   }
 
   /**
-   * Update snake game state
+   * Update snake game state with COLLISION DETECTION
    */
   private updateSnakeGame(): void {
     // Intelligent movement: move towards apple
@@ -223,33 +247,58 @@ export class ProgressTracker {
     const dx = this.appleX - currentHead.x;
     const dy = this.appleY - currentHead.y;
     
-    // Determine best direction to move towards apple
-    // Prioritize the axis with the larger distance
-    let targetDirection = this.direction;
+    // Helper function to check if a position would collide with snake body
+    const wouldCollide = (x: number, y: number): boolean => {
+      // Wrap coordinates
+      if (x < 0) x = this.gameWidth - 1;
+      if (x >= this.gameWidth) x = 0;
+      if (y < 0) y = this.gameHeight - 1;
+      if (y >= this.gameHeight) y = 0;
+      
+      // Check collision with body (skip head)
+      return this.snakeBody.slice(1).some(s => s.x === x && s.y === y);
+    };
     
-    if (Math.abs(dx) > Math.abs(dy)) {
-      // Move horizontally
-      if (dx > 0) {
-        targetDirection = 1; // right
-      } else if (dx < 0) {
-        targetDirection = 3; // left
-      }
-    } else if (dy !== 0) {
-      // Move vertically
-      if (dy > 0) {
-        targetDirection = 2; // down
-      } else if (dy < 0) {
-        targetDirection = 0; // up
+    // Calculate next position for each direction
+    const possibleMoves = [
+      { dir: 0, x: currentHead.x, y: currentHead.y - 1, priority: 0 }, // up
+      { dir: 1, x: currentHead.x + 1, y: currentHead.y, priority: 0 }, // right
+      { dir: 2, x: currentHead.x, y: currentHead.y + 1, priority: 0 }, // down
+      { dir: 3, x: currentHead.x - 1, y: currentHead.y, priority: 0 }, // left
+    ];
+    
+    // Remove the direction we came from (can't go backwards)
+    const oppositeDirection = (this.direction + 2) % 4;
+    const validMoves = possibleMoves.filter(move => move.dir !== oppositeDirection);
+    
+    // Assign priority based on distance to apple
+    for (const move of validMoves) {
+      // Wrap coordinates for distance calculation
+      let wrappedX = move.x;
+      let wrappedY = move.y;
+      if (wrappedX < 0) wrappedX = this.gameWidth - 1;
+      if (wrappedX >= this.gameWidth) wrappedX = 0;
+      if (wrappedY < 0) wrappedY = this.gameHeight - 1;
+      if (wrappedY >= this.gameHeight) wrappedY = 0;
+      
+      // Manhattan distance to apple
+      const distX = Math.abs(this.appleX - wrappedX);
+      const distY = Math.abs(this.appleY - wrappedY);
+      move.priority = -(distX + distY); // Negative so closer = higher priority
+      
+      // CRITICAL: Heavily penalize moves that would collide
+      if (wouldCollide(move.x, move.y)) {
+        move.priority -= 1000; // Make collision moves very undesirable
       }
     }
     
-    // Avoid going backwards into own body
-    const oppositeDirection = (targetDirection + 2) % 4;
-    if (this.direction !== oppositeDirection) {
-      this.direction = targetDirection;
-    } else {
-      // If target direction is backwards, try a perpendicular direction
-      this.direction = (this.direction + 1) % 4;
+    // Sort by priority (highest first)
+    validMoves.sort((a, b) => b.priority - a.priority);
+    
+    // Choose the best valid move
+    const bestMove = validMoves[0];
+    if (bestMove) {
+      this.direction = bestMove.dir;
     }
     
     // Move snake head
@@ -340,17 +389,21 @@ export class ProgressTracker {
   /**
    * Mark as complete and stop updates
    */
-  async complete(): Promise<void> {
+  async complete(messageText?: string): Promise<void> {
     if (this.isClosed) return;
     
     this.isClosed = true;
     this.stopAnimatedSpinner();
     
-    await this.addUpdate({
-      stage: 'complete',
-      message: 'Processing complete',
-      timestamp: Date.now(),
-    });
+    try {
+      await this.addUpdate({
+        stage: 'complete',
+        message: messageText || 'Processing complete',
+        timestamp: Date.now(),
+      });
+    } catch (error) {
+      console.warn('[ProgressTracker] Failed to mark complete:', error instanceof Error ? error.message : 'Unknown error');
+    }
   }
 
   /**
@@ -362,12 +415,16 @@ export class ProgressTracker {
     this.isClosed = true;
     this.stopAnimatedSpinner();
     
-    await this.addUpdate({
-      stage: 'error',
-      message: errorMessage || 'Processing failed',
-      details: details,
-      timestamp: Date.now(),
-    });
+    try {
+      await this.addUpdate({
+        stage: 'error',
+        message: errorMessage || 'Processing failed',
+        details: details,
+        timestamp: Date.now(),
+      });
+    } catch (error) {
+      console.warn('[ProgressTracker] Failed to mark error:', error instanceof Error ? error.message : 'Unknown error');
+    }
   }
 
   /**
@@ -401,7 +458,7 @@ export class ProgressTracker {
   /**
    * Get the Discord message being tracked
    */
-  getMessage(): DiscordMessage {
+  getMessage(): EditableMessage {
     return this.message;
   }
 }
@@ -823,7 +880,7 @@ export class ResponseRenderer {
   static async sendToDiscord(
     message: DiscordMessage,
     rendered: RenderedResponse,
-    workingMessage?: DiscordMessage
+    workingMessage?: EditableMessage
   ): Promise<DiscordMessage | null> {
     try {
       const guildId = message.guildId || undefined;
@@ -864,7 +921,7 @@ export class ResponseRenderer {
       messageChunks = this.validateMessageChunks(messageChunks, discordAttachments.length > 0);
 
       // STEP 1: Send system embed FIRST (if not in OFF mode)
-      let systemMessage: DiscordMessage | null = null;
+      let systemMessage: any = null;
       
       if (debugMode !== DebugMode.OFF && rendered.systemEmbed.data.description) {
         if (workingMessage) {
@@ -883,7 +940,9 @@ export class ResponseRenderer {
         }
       } else if (workingMessage) {
         // Delete working message if debug is OFF
-        await workingMessage.delete().catch(() => {});
+        if (workingMessage.delete) {
+          await workingMessage.delete().catch(() => {});
+        }
       }
 
       // STEP 2: Send user-facing text AFTER system embed
@@ -935,7 +994,7 @@ export class ResponseRenderer {
         });
       }
 
-      return lastResponseMessage || systemMessage;
+      return (lastResponseMessage || systemMessage) as DiscordMessage | null;
     } catch (error) {
       console.error('Error sending rendered response to Discord:', error);
       
@@ -967,15 +1026,45 @@ export class ResponseRenderer {
 
   /**
    * Create a progress tracker for live updates
+   * @deprecated Use createProgressTrackerForInteraction for slash commands
    */
-  static createProgressTracker(message: DiscordMessage, userQuery: string): ProgressTracker {
+  static createProgressTracker(message: DiscordMessage | EditableMessage, userQuery: string): ProgressTracker {
     const embed = new EmbedBuilder()
       .setColor(0xffa500)
       .setTitle('⚡ Processing Your Request')
       .setDescription(`**Query:** ${this.truncate(userQuery, 200)}\n\n⠋ Starting...`)
       .setTimestamp();
     
-    return new ProgressTracker(message, embed);
+    // If it's a regular message, wrap it in EditableMessage interface
+    const editable: EditableMessage = (message as any).edit 
+      ? { 
+          edit: (opts: any) => (message as any).edit(opts),
+          delete: (message as any).delete ? () => (message as any).delete() : undefined,
+        }
+      : message as EditableMessage;
+    
+    return new ProgressTracker(editable, embed);
+  }
+
+  /**
+   * Create a progress tracker for interaction replies (slash commands)
+   * This ensures the progress tracker works with interaction.editReply()
+   */
+  static createProgressTrackerForInteraction(interaction: any, userQuery: string): ProgressTracker {
+    console.log('[ProgressTracker] Creating tracker for interaction');
+    const embed = new EmbedBuilder()
+      .setColor(0xffa500)
+      .setTitle('⚡ Processing Your Request')
+      .setDescription(`**Query:** ${this.truncate(userQuery, 200)}\n\n⠋ Starting...`)
+      .setTimestamp();
+    
+    // Wrap interaction.editReply in EditableMessage interface
+    const editable: EditableMessage = {
+      edit: (opts: any) => interaction.editReply(opts) as Promise<any>,
+      delete: interaction.deleteReply ? () => interaction.deleteReply() : undefined,
+    };
+    
+    return new ProgressTracker(editable, embed);
   }
 
   /**

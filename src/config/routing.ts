@@ -217,16 +217,16 @@ export const routingConfig: RoutingConfig = {
     
     [ModelTier.THINKING]: {
       tier: ModelTier.THINKING,
-      modelId: getEnv('MODEL_THINKING', 'allenai/olmo-3.1-32b-think:free'),
-      maxPromptTokens: getEnvNumber('MODEL_THINKING_MAX_PROMPT', 64000),
-      maxOutputTokens: getEnvNumber('MODEL_THINKING_MAX_OUTPUT', 16000),
+      modelId: getEnv('MODEL_CODING', 'kwaipilot/kat-coder-pro:free'),
+      maxPromptTokens: getEnvNumber('MODEL_CODING_MAX_PROMPT', 128000),
+      maxOutputTokens: getEnvNumber('MODEL_CODING_MAX_OUTPUT', 128000),
       costTier: 'free',
-      provider: 'allenai',
+      provider: 'kwaipilot',
       supportsTools: true,
       supportsCaching: false,
-      inputPricePerMillionTokens: getEnvFloat('MODEL_THINKING_INPUT_PRICE', 0),
-      outputPricePerMillionTokens: getEnvFloat('MODEL_THINKING_OUTPUT_PRICE', 0),
-      cacheReadPricePerMillionTokens: getEnvOptionalFloat('MODEL_THINKING_CACHE_READ_PRICE'),
+      inputPricePerMillionTokens: getEnvFloat('MODEL_CODING_INPUT_PRICE', 0),
+      outputPricePerMillionTokens: getEnvFloat('MODEL_CODING_OUTPUT_PRICE', 0),
+      cacheReadPricePerMillionTokens: getEnvOptionalFloat('MODEL_CODING_CACHE_READ_PRICE', 0),
     },
     
     [ModelTier.CODING]: {

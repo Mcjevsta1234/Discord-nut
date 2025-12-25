@@ -1,15 +1,18 @@
 import fs from 'fs';
 import path from 'path';
 import { GuildMember, PermissionFlagsBits } from 'discord.js';
+import { env } from '../config/env';
 
 export interface GuildAdminConfig {
   roleId?: string; // If set, members with this role are admins
   permission?: keyof typeof PermissionFlagsBits; // If set, members with this permission are admins
+  premiumRoleId?: string; // Premium role allowed to run gated commands
   updatedAt: number;
 }
 
 export class AdminConfigManager {
   private readonly baseDir = path.join(process.cwd(), 'settings', 'admin');
+  private readonly adminUserIds: Set<string> = new Set(env.ADMIN_USER_IDS);
 
   constructor() {
     if (!fs.existsSync(this.baseDir)) {
@@ -56,8 +59,41 @@ export class AdminConfigManager {
     if (fs.existsSync(p)) fs.unlinkSync(p);
   }
 
+  setPremiumRole(guildId: string, roleId: string): void {
+    const cfg: GuildAdminConfig = {
+      ...(this.getConfig(guildId) || {}),
+      premiumRoleId: roleId,
+      updatedAt: Date.now(),
+    };
+    fs.writeFileSync(this.getConfigPath(guildId), JSON.stringify(cfg, null, 2), 'utf-8');
+  }
+
+  clearPremiumRole(guildId: string): void {
+    const cfg = this.getConfig(guildId);
+    if (!cfg) return;
+    delete cfg.premiumRoleId;
+    cfg.updatedAt = Date.now();
+    fs.writeFileSync(this.getConfigPath(guildId), JSON.stringify(cfg, null, 2), 'utf-8');
+  }
+
+  getPremiumRoleId(guildId: string): string | undefined {
+    if (!guildId) return undefined;
+    return this.getConfig(guildId)?.premiumRoleId;
+  }
+
   isAdmin(guildId: string, member: GuildMember | null | undefined): boolean {
     if (!member) return false;
+
+    // Owner override via ADMIN_USER_IDS
+    if (this.adminUserIds.has(member.user.id)) {
+      return true;
+    }
+
+    // Guild owner is always admin
+    if ((member.guild as any)?.ownerId && (member.guild as any).ownerId === member.id) {
+      return true;
+    }
+
     const cfg = this.getConfig(guildId);
 
     // 1) Role-based admin

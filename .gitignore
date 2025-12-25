@@ -10,3 +10,22 @@ context/
 bot-output.txt
 console_input.txt
 test-output.txt
+
+# Model pools cache
+.cache/
+.cache/**
+
+# Test output directories
+test-output/
+tests-output/
+test-results/
+
+# Job output directories
+settings/admin/
+settings/personas/
+
+# Temporary files
+*.tmp
+*.temp
+.vscode/
+.idea/

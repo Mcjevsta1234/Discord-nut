@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dots and Boxes - Cottage Games</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-decoration">🌸 ✨ 🏡 ✨ 🌸</div>
+            <h1>🏡 Cottage Games</h1>
+            <p class="tagline">Where cozy meets play</p>
+            <nav>
+                <a href="index.html">Home</a>
+                <a href="dots-and-boxes.html" class="active">Play Dots & Boxes</a>
+                <a href="about.html">About</a>
+            </nav>
+        </header>
+
+        <main class="game-page">
+            <div class="game-header">
+                <h2>🎮 Dots and Boxes</h2>
+                <div class="game-info">
+                    <div class="score-board">
+                        <div class="player player1">
+                            <span class="player-color" style="background: #ff6b9d;"></span>
+                            <span class="player-name">Player 1</span>
+                            <span class="player-score" id="player1-score">0</span>
+                        </div>
+                        <div class="player player2">
+                            <span class="player-color" style="background: #4ecdc4;"></span>
+                            <span class="player-name">Player 2</span>
+                            <span class="player-score" id="player2-score">0</span>
+                        </div>
+                    </div>
+                    <div class="turn-indicator">
+                        <span id="current-turn">Player 1's Turn</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="game-container">
+                <canvas id="game-canvas"></canvas>
+            </div>
+
+            <div class="game-controls">
+                <button id="new-game" class="btn">New Game</button>
+                <div class="grid-size-control">
+                    <label for="grid-size">Grid Size:</label>
+                    <select id="grid-size">
+                        <option value="3">3×3 (Beginner)</option>
+                        <option value="4" selected>4×4 (Normal)</option>
+                        <option value="5">5×5 (Advanced)</option>
+                        <option value="6">6×6 (Expert)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="game-rules">
+                <h3>How to Play</h3>
+                <ol>
+                    <li>Players take turns clicking to draw lines between adjacent dots</li>
+                    <li>When a player completes a box (all 4 sides), they claim it and get another turn</li>
+                    <li>The game ends when all boxes are claimed</li>
+                    <li>The player with the most boxes wins!</li>
+                </ol>
+            </div>
+        </main>
+
+        <footer>
+            <div class="footer-content">
+                <div class="footer-decoration">🌿 🎮 🌿</div>
+                <p>Made with 💜 in our cozy cottage</p>
+                <p class="copyright">&copy; 2025 Cottage Games • All Rights Reserved</p>
+                <div class="footer-links">
+                    <span>Happy Gaming!</span> • <span>Stay Cozy</span> • <span>Play Together</span>
+                </div>
+            </div>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

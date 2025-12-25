@@ -1,17 +1,17 @@
 import * as readline from 'readline';
 import * as fs from 'fs';
 import * as path from 'path';
-import { OpenRouterService, Message } from '../ai/openRouterService';
-import { MemoryManager } from '../ai/memoryManager';
+import { OpenRouterService, Message } from '../llm/openRouterService';
+import { MemoryManager } from '../memory/memoryManager';
 import { PromptManager } from '../discord/promptManager';
-import { RouterService } from '../ai/routerService';
-import { Planner } from '../ai/planner';
-import { ActionExecutor } from '../ai/actionExecutor';
+import { RouterService } from '../llm/routerService';
+import { Planner } from '../llm/planner';
+import { ActionExecutor } from '../llm/actionExecutor';
 import { MCPClient, registerDefaultTools } from '../mcp';
-import { ChatLogger } from '../ai/chatLogger';
-import { ProjectRouter } from '../ai/projectRouter';
-import { createJob, setJobOutputToLogsDir, updateJobStatus, ensureJobDirs, writeJobLog, markStageStart, markStageEnd, runDirectCachedCodegen } from '../jobs';
-import { getCodegenModel } from '../jobs/directCachedCoder';
+import { ChatLogger } from '../llm/chatLogger';
+import { ProjectRouter } from '../llm/projectRouter';
+import { createJob, setJobOutputToLogsDir, updateJobStatus, ensureJobDirs, writeJobLog, markStageStart, markStageEnd } from '../jobs';
+import { generateCode as runDirectCachedCodegen, getCodegenModel } from '../jobs/codegen';
 
 export class ConsoleChat {
   private aiService: OpenRouterService;

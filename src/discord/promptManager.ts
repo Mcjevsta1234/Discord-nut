@@ -1,6 +1,6 @@
 import { config } from '../config';
-import { ConversationMemory } from '../ai/memoryManager';
-import { Message } from '../ai/openRouterService';
+import { ConversationMemory } from '../memory/memoryManager';
+import { Message } from '../llm/openRouterService';
 import {
   getPersona,
   defaultPersonaId,

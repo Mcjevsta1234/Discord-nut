@@ -9,7 +9,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { Job, CodegenResult, ProjectType } from './types';
 import { writeJobLog, safeWriteFile } from './jobManager';
-import { OpenRouterService } from '../ai/openRouterService';
+import { OpenRouterService } from '../llm/openRouterService';
 
 // Safety limits
 const MAX_FILES = 60;
@@ -23,7 +23,7 @@ function getCodegenModel(): string {
 }
 
 /**
- * Build the system prompt for code generation
+ * Build the system prompt for the codegen LLM call.
  */
 function buildCodegenPrompt(projectType: ProjectType): string {
   return `You are a code generator. Your job is to generate complete, production-ready project files based on a detailed specification and execution plan.
@@ -65,7 +65,7 @@ ${getProjectTypeGuidance(projectType)}`;
 }
 
 /**
- * Get project-specific generation guidance
+ * Provide additional guidance for specific project types.
  */
 function getProjectTypeGuidance(projectType: ProjectType): string {
   const guidance: Record<ProjectType, string> = {
@@ -74,7 +74,7 @@ For static_html projects:
 - Generate index.html (and styles.css, script.js if needed)
 - Use semantic HTML5
 - Include complete, working CSS and JavaScript
-- May use CDNs for fonts/libraries unless spec says offline
+- May use CDNs for fonts/libraries unless spec says otherwise
 - Implement all interactive features from spec
 - Include proper accessibility attributes
 - Add real content (not "Lorem ipsum")`,
@@ -98,7 +98,7 @@ For discord_bot projects:
 - Include README.md with setup instructions
 - Implement all commands from spec
 - Add proper event handlers
-- Use slash commands (interactions)`,
+- Use slash commands (interactions)`
   };
 
   return guidance[projectType];
@@ -399,11 +399,6 @@ Required structure:
   "entrypoints": {
     "run": "optional string",
     "dev": "optional string",
-    "build": "optional string"
-  },
-  "notes": "string"
-}
-
 Requirements:
 - At least 1 file
 - Maximum ${MAX_FILES} files

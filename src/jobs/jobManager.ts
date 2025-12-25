@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Job, JobInput, JobStatus, ProjectType } from './types';
 import { getJobConfig } from './config';
-import { ProjectRoutingDecision } from '../ai/projectRouter';
+import { ProjectRoutingDecision } from '../llm/projectRouter';
 
 /**
  * Generate a URL-safe job ID

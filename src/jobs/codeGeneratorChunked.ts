@@ -7,7 +7,7 @@ import path from 'path';
 import fs from 'fs';
 import { Job, CodegenResult, ProjectType, FilePlanEntry } from './types';
 import { writeJobLog, safeWriteFile } from './jobManager';
-import { OpenRouterService } from '../ai/openRouterService';
+import { OpenRouterService } from '../llm/openRouterService';
 
 // Configuration for dynamic token allocation
 const TOKEN_ALLOCATION = {
